@@ -1,0 +1,257 @@
+// Define server name
+// bbf domain name : '.bbf-prod.ad.production.local'
+def DB_SERV_PRD = 'spfccdbbfcslp1.bbf-prod.ad.production.local'
+def DB_SERV_UAT = 'spfccdbbfcatu2.bbf-prod.ad.production.local'
+def DB_SERV_Dm1 = 'spfccdbbbfcslr1.bbf-prod.ad.production.local'
+def WEBLOGIC_SERV_PRD = 'spfccabbfcatu2.bbf-prod.ad.production.local'
+def WEBLOGIC_SERV_UAT = 'spfccabbfcatu2.bbf-prod.ad.production.local'
+def WEBLOGIC_SERV_Dm1  = 'spfccabbfcslr1.bbf-prod.ad.production.local'
+
+// Define hostname for target vm
+def DB_SERV_PRD_VM = 'spfccdbbfcslp1'
+def DB_SERV_UAT_VM = 'spfccdbbfcatu2'
+def DB_SERV_Dm1_VM = 'spfccdbbbfcslr1'
+def WEBLOGIC_SERV_PRD_VM = 'spfccabbfcatu2'
+def WEBLOGIC_SERV_UAT_VM = 'spfccabbfcatu2'
+def WEBLOGIC_SERV_Dm1_VM  = 'spfccabbfcslr1'
+
+// Define Bank and Branch
+def BANK_BBF = 'BBF'
+def BRANCH_UAT = 'UAT'
+def BRANCH_Dm1 = 'D-1'
+def BRANCH_PRD = 'PRD'
+
+// Define Oracle env
+def ORACLE_SID_Dm1 = 'BBFFCCPR'
+def ORACLE_SID_PRD = 'BBFFCCPR'
+def OWNER_BBF_DB_Dm1 = 'FCCBBFPROD'
+
+// Define Source and Destination Volume
+// def SOURCE_VOLUME = 'BBF::D-1_BBF_test_20230508'
+def SOURCE_VOLUME = 'PRD::POD_BBF_PRD_ORA'
+
+// Define stage to execute
+def Files_Prepare_STAGE = 'PrepareDBFiles'
+def ShutdownDB_STAGE = 'ShutdownDB'
+def UnMount_STAGE = 'UnMount'
+def FreezeDB_STAGE = 'FreezeDB'
+def TakeSnap_STAGE = 'TakeSnap'
+def UnFreezeDB_STAGE = 'UnFreezeDB'
+def Mount_STAGE = 'Mount'
+def StartupDB_STAGE = 'StartupDB'
+def SyncWLSData_STAGE = 'SyncWLSData'
+
+// Define Confirmation value
+def Job_Confirm = 'CONFIRM'
+
+pipeline {
+
+    agent any
+
+    environment {
+        TAG_DATE_FORMAT = "%Y%m%d"
+        // CURRENT_DATE = sh(returnStdout: true, script: "date +${TAG_DATE_FORMAT}").trim()
+        // PREVIOUS_TAG = sh(returnStdout: true, script: "git fetch && git describe --abbrev=0 --tags || echo ''").trim()
+        // PREVIOUS_DATE = PREVIOUS_TAG.replaceAll("v", "").trim()
+        // TAG_VERSION = (CURRENT_DATE == PREVIOUS_DATE) ? "v0.0.$(echo ${PREVIOUS_TAG} | cut -d'-' -f2 | awk '{print $1+1}')-$(CURRENT_DATE)" : "v0.0.0-${CURRENT_DATE}"
+    }
+
+    stages {
+        stage('List variable') {
+            steps {
+                sh "printenv | sort"
+                echo "${env.BUILD_NUMBER}"
+            }
+        }
+
+        stage('DB: Prepare files for execute') {
+            steps { 
+                echo "${env.BUILD_NUMBER}"
+                // catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                build job: 'template_d1_refresh_fcc_app_and_db_job_AI',
+                parameters: [
+                string(name: 'BANK', value: "${BANK_BBF}"), 
+                string(name: 'BRANCH', value: "${BRANCH_Dm1}"), 
+                string(name: 'ORACLE_SID', value: "${ORACLE_SID_Dm1}"), 
+                string(name: 'OWNER', value: "${OWNER_BBF_DB_Dm1}"), 
+                string(name: 'STAGE', value: "${Files_Prepare_STAGE}"),
+                string(name: 'WEBLOGIC_SERVER', value: "${WEBLOGIC_SERV_Dm1}"),
+                string(name: 'SOURCE_WEBLOGIC_SERVER', value: "${WEBLOGIC_SERV_UAT}"),
+                string(name: 'DATABASE_SERVER', value: "${DB_SERV_Dm1}"),
+                string(name: 'SOURCE_DATABASE_SERVER', value: "${DB_SERV_UAT}")]
+                // }
+            }
+        }
+
+        stage('APP: Stop Weblogic application') {
+            steps { 
+                echo "${env.BUILD_NUMBER}"
+                // catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                build job: 'RESTART_FCCv14_AllService_GOC',
+                parameters: [
+                string(name: 'Bank', value: "${BANK_BBF}"), 
+                string(name: 'Branch', value: "${BRANCH_Dm1}"),
+                string(name: 'Application_CONFIRM', value: "YES"),
+                string(name: 'Application', value: "${WEBLOGIC_SERV_Dm1}"),
+                string(name: 'Database_CONFIRM', value: "NO"),
+                string(name: 'ACTION', value: "STOP"),
+                string(name: 'Confirm', value: "YES")]
+                // }
+            }
+        }
+
+        stage('DB: Shutdown D-1 DataBase') {
+            steps { 
+                echo "${env.BUILD_NUMBER}"
+                // catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                build job: 'template_d1_refresh_fcc_app_and_db_job_AI',
+                parameters: [
+                string(name: 'BANK', value: "${BANK_BBF}"), 
+                string(name: 'BRANCH', value: "${BRANCH_Dm1}"), 
+                string(name: 'ORACLE_SID', value: "${ORACLE_SID_Dm1}"), 
+                string(name: 'OWNER', value: "${OWNER_BBF_DB_Dm1}"), 
+                string(name: 'STAGE', value: "${ShutdownDB_STAGE}"),
+                string(name: 'WEBLOGIC_SERVER', value: "${WEBLOGIC_SERV_Dm1}"),
+                string(name: 'SOURCE_WEBLOGIC_SERVER', value: "${WEBLOGIC_SERV_UAT}"),
+                string(name: 'DATABASE_SERVER', value: "${DB_SERV_Dm1}"),
+                string(name: 'SOURCE_DATABASE_SERVER', value: "${DB_SERV_UAT}")]
+                // }
+            }
+        }
+
+        stage('INFRA: Unmount D-1 Database Disk') {
+            steps {
+                echo 'Unmount D-1 Database Disk'
+                echo "${env.BUILD_NUMBER}"
+                // catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                build job: 'D-1_INFRA_UnMount_job_AI',
+                parameters: [
+                    string(name: 'D1_BUILD_NUMBER', value: "${env.BUILD_NUMBER}"),
+                    string(name: 'source_volume', value: "${SOURCE_VOLUME}"),
+                    string(name: 'origin_vm', value: "${DB_SERV_PRD_VM}"),
+                    string(name: 'target_vm', value: "${DB_SERV_Dm1_VM}")
+                    ]
+                // }
+            }
+        }
+        
+        stage('DB: Freeze PRD DataBase') {
+            steps { 
+                // catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                build job: 'template_d1_refresh_fcc_app_and_db_job_AI',
+                parameters: [
+                string(name: 'BANK', value: "${BANK_BBF}"), 
+                string(name: 'BRANCH', value: "${BRANCH_Dm1}"), 
+                string(name: 'ORACLE_SID', value: "${ORACLE_SID_Dm1}"), 
+                string(name: 'OWNER', value: "${OWNER_BBF_DB_Dm1}"), 
+                string(name: 'STAGE', value: "${FreezeDB_STAGE}"),
+                string(name: 'WEBLOGIC_SERVER', value: "${WEBLOGIC_SERV_Dm1}"),
+                string(name: 'SOURCE_WEBLOGIC_SERVER', value: "${WEBLOGIC_SERV_UAT}"),
+                string(name: 'DATABASE_SERVER', value: "${DB_SERV_Dm1}"),
+                string(name: 'SOURCE_DATABASE_SERVER', value: "${DB_SERV_UAT}")]
+                // }
+            }
+        }
+
+        stage('INFRA: Take Snapshot on PRD DataBase') {
+            steps {
+                echo 'Take Snapshot on PRD DataBase'
+                echo "${env.BUILD_NUMBER}"
+                // catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                build job: 'D-1_INFRA_TakeSnapshot_job_AI',
+                parameters: [
+                    string(name: 'D1_BUILD_NUMBER', value: "${env.BUILD_NUMBER}"),
+                    string(name: 'source_volume', value: "${SOURCE_VOLUME}"),
+                    string(name: 'origin_vm', value: "${DB_SERV_PRD_VM}"),
+                    string(name: 'target_vm', value: "${DB_SERV_Dm1_VM}")
+                    ]
+                // }
+            }
+        }
+
+        stage('DB: UnFreeze PRD DataBase') {
+            steps { 
+                // catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                build job: 'template_d1_refresh_fcc_app_and_db_job_AI',
+                parameters: [
+                string(name: 'BANK', value: "${BANK_BBF}"), 
+                string(name: 'BRANCH', value: "${BRANCH_Dm1}"), 
+                string(name: 'ORACLE_SID', value: "${ORACLE_SID_Dm1}"), 
+                string(name: 'OWNER', value: "${OWNER_BBF_DB_Dm1}"), 
+                string(name: 'STAGE', value: "${UnFreezeDB_STAGE}"),
+                string(name: 'WEBLOGIC_SERVER', value: "${WEBLOGIC_SERV_Dm1}"),
+                string(name: 'SOURCE_WEBLOGIC_SERVER', value: "${WEBLOGIC_SERV_UAT}"),
+                string(name: 'DATABASE_SERVER', value: "${DB_SERV_Dm1}"),
+                string(name: 'SOURCE_DATABASE_SERVER', value: "${DB_SERV_UAT}")]
+                // }
+            }
+        }
+
+        stage('INFRA: Mount D-1 DataBase Disk') {
+            steps {
+                echo 'Mount D-1 DataBase Disk'
+                echo "${env.BUILD_NUMBER}"
+                // catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                build job: 'D-1_INFRA_Mount_job_AI',
+                parameters: [
+                    string(name: 'D1_BUILD_NUMBER', value: "${env.BUILD_NUMBER}"),
+                    string(name: 'source_volume', value: "${SOURCE_VOLUME}"),
+                    string(name: 'origin_vm', value: "${DB_SERV_PRD_VM}"),
+                    string(name: 'target_vm', value: "${DB_SERV_Dm1_VM}")
+                    ]
+                // }
+            }
+        }
+
+        stage('DB: Startup D-1 Database') {
+            steps {
+                // catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                build job: 'template_d1_refresh_fcc_app_and_db_job_AI',
+                parameters: [
+                string(name: 'BANK', value: "${BANK_BBF}"), 
+                string(name: 'BRANCH', value: "${BRANCH_Dm1}"), 
+                string(name: 'ORACLE_SID', value: "${ORACLE_SID_Dm1}"), 
+                string(name: 'OWNER', value: "${OWNER_BBF_DB_Dm1}"), 
+                string(name: 'STAGE', value: "${StartupDB_STAGE}"),
+                string(name: 'WEBLOGIC_SERVER', value: "${WEBLOGIC_SERV_Dm1}"),
+                string(name: 'SOURCE_WEBLOGIC_SERVER', value: "${WEBLOGIC_SERV_UAT}"),
+                string(name: 'DATABASE_SERVER', value: "${DB_SERV_Dm1}"),
+                string(name: 'SOURCE_DATABASE_SERVER', value: "${DB_SERV_UAT}")]
+                // }
+            }
+        }
+
+        stage('APP: Start Weblogic application') {
+            steps { 
+                echo "${env.BUILD_NUMBER}"
+                // catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                build job: 'RESTART_FCCv14_AllService_GOC',
+                parameters: [
+                string(name: 'Bank', value: "${BANK_BBF}"), 
+                string(name: 'Branch', value: "${BRANCH_Dm1}"),
+                string(name: 'Application_CONFIRM', value: "YES"),
+                string(name: 'Application', value: "${WEBLOGIC_SERV_Dm1}"),
+                string(name: 'Database_CONFIRM', value: "NO"),
+                string(name: 'ACTION', value: "START"),
+                string(name: 'Confirm', value: "YES")]
+                // }
+            }
+        }
+
+        stage('APP: Sync WLS Data and restart WLS') {
+            steps {
+                echo 'Sync WLS Data and restart WLS'
+                build job: 'REFRESH_FCCv14_APP_AI',
+                parameters: [
+                string(name: 'BANK', value: "${BANK_BBF}"), 
+                string(name: 'FROM_BRANCH', value: "${BRANCH_PRD}"), 
+                string(name: 'Branch', value: "${BRANCH_Dm1}"),
+                string(name: 'ServerName', value: "${BRANCH_Dm1}"),
+                string(name: 'CONFIRM', value: "${Job_Confirm}"),
+                string(name: 'ServerNameApplication', value: "${WEBLOGIC_SERV_Dm1}")]
+            }
+        }
+
+    }
+    
+}

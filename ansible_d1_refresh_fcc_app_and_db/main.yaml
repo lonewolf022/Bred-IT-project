@@ -1,0 +1,34 @@
+---
+- name: Ansible_d1_refresh_fcc_app_and_db
+  hosts: "{{ WEBLOGIC_SERVER }}, {{ DATABASE_SERVER }}, {{ SOURCE_WEBLOGIC_SERVER }}, {{ SOURCE_DATABASE_SERVER }}"
+  become: True
+  gather_facts: no
+
+  vars_files:
+   - vars.yml
+   - svc_aiautomate_secrets.yml
+   
+  pre_tasks:
+   - name:                  Get Parameter
+     uri:
+       url:                 "{{ satellite_url }}/api/v2/hosts/{{ hostname_inv | lower }}/parameters/"
+       user:                svc_aiautomate
+       password:            "{{ svc_aiautomate_pass }}"
+       method:              GET
+       force_basic_auth:    yes
+       body_format:         json
+       status_code:         200
+       validate_certs:      false
+     delegate_to:           localhost
+     register:              parameters_app_version
+
+  roles:
+    - { role: Dminus1-DB-Prepare-Files, when: ( hostname_inv == DATABASE_SERVER and STAGE == 'PrepareDBFiles' ) }  # Will change to SOURCE_DATABASE_SERVER
+    - { role: Dminus1-DB-Prepare-Shutdown, when: ( hostname_inv == DATABASE_SERVER and STAGE == 'ShutdownDB' ) }  # Will update later when got information.
+    # Call Job from INFRA team to unmount D-1 DB disk --> 'D-1_INFRA_UnMount_job_AI'
+    - { role: Dminus1-DB-Freeze, when: ( hostname_inv == DATABASE_SERVER and STAGE == 'FreezeDB' ) }  # Will change to SOURCE_DATABASE_SERVER
+    # Call Job from INFRA team to take snapshot PRD DB disk --> 'D-1_INFRA_TakeSnapshot_job_AI'
+    - { role: Dminus1-DB-UnFreeze, when: ( hostname_inv == DATABASE_SERVER and STAGE == 'UnFreezeDB' ) }  # Will change to SOURCE_DATABASE_SERVER
+    # Call Job from INFRA team to mount D-1 DB disk --> 'D-1_INFRA_Mount_job_AI'
+    - { role: Dminus1-DB-Startup, when: ( hostname_inv == DATABASE_SERVER and STAGE == 'StartupDB' ) }  # Will update later when got information.
+    # Call Job from Jenkins for refresh Application --> 'REFRESH_FCCv14_APP_AI'

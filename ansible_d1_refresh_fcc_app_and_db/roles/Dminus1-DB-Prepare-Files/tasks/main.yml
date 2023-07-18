@@ -1,0 +1,52 @@
+---
+# tasks file for Dminus1-DB-Prepare-Files
+
+# tasks file for Dminus1-DB-Prepare-Snapshot
+
+- name: Get current date and time
+  shell: date +"%Y%m%d"
+  register: DAY_DATE
+
+- name: Display current date and time
+  debug:
+    var: DAY_DATE
+
+- name: Prepare Working Directory for Database tasks
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+    owner: oracle
+    group: oracle
+  with_items:
+    - "{{ Automate_DIR }}/"
+    - "{{ Automate_DIR }}/run"
+    - "{{ Automate_DIR }}/par"
+    - "{{ Automate_DIR }}/pfile"
+    - "{{ Automate_DIR }}/pfile/ORG"
+    - "{{ Automate_DIR }}/Scripts"
+    - "{{ Automate_DIR }}/Scripts/SQL/{{ ORACLE_SID }}/{{ DAY_DATE.stdout }}"
+    - "{{ Automate_DIR }}/logs/{{ ORACLE_SID }}/{{ DAY_DATE.stdout }}"
+
+- name: Prepare scripts file for execute
+  copy:
+    src: "{{ item }}"
+    dest: /home/oracle/Scripts/bin
+    owner: oracle
+    group: oracle
+    mode: 0740
+  with_items:
+    - flush_db_and_freeze.sh 
+    - unfreeze_db.sh
+    - genalluser.sh
+    - expdp_weblogic.sh
+    - shutdown_database.sh
+    - start_database.sh
+    - run_after_refresh.sh
+    - impdp_weblogic.sh
+  register: file_prepared
+
+- name: Debug file_prepared variable 
+  debug:
+    var: file_prepared
+    

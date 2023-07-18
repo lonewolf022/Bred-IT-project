@@ -1,0 +1,29 @@
+---
+# tasks file for Dminus1-DB-Freeze
+
+- name: Get current date and time
+  shell: date +"%Y%m%d"
+  register: DAY_DATE
+  tags:
+  - always
+
+- name: Display current date and time
+  debug:
+    var: DAY_DATE
+
+# Check DB status
+- name: Check DB status
+  shell: "ps -ef | grep oracle | grep ora_pmon_ | grep -v grep"
+  register: check_db_result
+  ignore_errors: yes # Please remove or comment this line when Go-Live
+
+- name: Display check_db_result information.
+  debug:
+    var: check_db_result
+
+# DB Task Step 01 : Flush DB and Put DB into Backuup mode
+- name: Step 01 | Flush Database and Put DB into Backup mode
+  become_user: oracle
+  shell: "{{ oracle_script_dir }}/flush_db_and_freeze.sh {{ ORACLE_SID }} {{ DAY_DATE.stdout }} /home/oracle {{ Automate_DIR }}"
+  register: freeze_db_status
+  when: not check_db_result.failed

@@ -1,0 +1,62 @@
+---
+# tasks file for Dminus1-DB-Startup
+
+### Begin: Prepare variable for pipeline ###
+- name: Get current date and time
+  shell: date +"%Y%m%d"
+  register: DAY_DATE
+
+- name: Display current date and time
+  debug:
+    var: DAY_DATE
+
+### END: Prepare variable for pipeline ###
+
+# Check DB status
+- name: Check DB status
+  shell: "ps -ef | grep oracle | grep ora_pmon_ | grep -v grep"
+  register: check_db_result
+  ignore_errors: yes
+
+- name: Check DB status variable
+  debug:
+    var: check_db_result
+
+# Step 05: Startup Database
+- name: Step_05 | Start database
+  become_user: oracle
+  shell: "{{ oracle_script_dir }}/start_database.sh {{ ORACLE_SID }} {{ DAY_DATE.stdout }} /home/oracle {{ Automate_DIR }}"
+  register: start_database
+#  when: "'Database closed.' in shutdown_database.stdout"
+  when: check_db_result.failed
+
+- name: Debug start_database variable 
+  debug:
+    var: start_database
+    
+##### Run after refresh step #####
+
+# Step 06: Run after startup database
+- name: Step_06 | Replace user password after startup DB
+  become_user: oracle
+  shell: "{{ oracle_script_dir }}/run_after_refresh.sh {{ ORACLE_SID }} {{ DAY_DATE.stdout }} /home/oracle {{ Automate_DIR }} {{ owner }}"
+  register: run_after_startup_db
+  when: start_database is succeeded
+
+- name: Debug run_after_startup_db variable 
+  debug:
+    var: run_after_startup_db
+
+##### Import WebLogic user #####
+
+# Step 07: Import WebLogic user
+- name: Step_07 | Import WebLogic user
+  become_user: oracle
+  shell: "{{ oracle_script_dir }}/impdp_weblogic.sh {{ ORACLE_SID }} {{ DAY_DATE.stdout }} /home/oracle {{ Automate_DIR }}"
+  register: imp_weblogic
+  when: run_after_startup_db is succeeded
+
+- name: Debug imp_weblogic variable 
+  debug:
+    var: imp_weblogic
+

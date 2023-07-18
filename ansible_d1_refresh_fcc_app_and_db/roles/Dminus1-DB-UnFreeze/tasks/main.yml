@@ -1,0 +1,33 @@
+---
+# tasks file for Dminus1-DB-UnFreeze
+
+### For DAY_DATE variable register ###
+- name: Get current date and time
+  shell: date +"%Y%m%d"
+  register: DAY_DATE
+  tags:
+  - always
+
+- name: Display current date and time
+  debug:
+    var: DAY_DATE
+
+### ###
+
+# Check DB status
+- name: Check DB status
+  shell: "ps -ef | grep oracle | grep ora_pmon_ | grep -v grep"
+  register: check_db_result
+  ignore_errors: yes # Please remove or comment this line when Go-Live
+
+- name: Display check_db_result information.
+  debug:
+    var: check_db_result
+
+# Step 03: Put DB to Normal mode
+- name: Unfreeze Database and change it to Normal mode
+  become_user: oracle
+  shell: "/home/oracle/Scripts/bin/unfreeze_db.sh {{ ORACLE_SID }} {{ DAY_DATE.stdout }} /home/oracle {{ Automate_DIR }}"
+  register: unfreeze_db_status
+  when: not check_db_result.failed
+    

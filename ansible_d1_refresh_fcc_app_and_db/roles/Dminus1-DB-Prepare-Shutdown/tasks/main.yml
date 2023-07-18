@@ -1,0 +1,79 @@
+---
+# tasks file for Dminus1-DB-Prepare-Shutdown
+
+### Begin: Prepare variable for pipeline ###
+- name: Get current date and time
+  shell: date +"%Y%m%d"
+  register: DAY_DATE
+
+- name: Display current date and time
+  debug:
+    var: DAY_DATE
+
+### END: Prepare variable for pipeline ###
+
+# Check DB status
+- name: Check DB status
+  shell: "ps -ef | grep oracle | grep ora_pmon_ | grep -v grep"
+  register: check_db_result
+  ignore_errors: yes
+
+- name: Display check_db_result information.
+  debug:
+    var: check_db_result
+
+# Block:
+# Block module will perform when Database state is "OPEN"
+- name: These tasks will execute only when Database state is "OPEN"
+  block:
+
+    # Step 03: Gen all user in Database on D-1 server
+    - name: Gen all user in Database on D-1 server
+      become_user: oracle
+      shell: "{{ oracle_script_dir }}/genalluser.sh {{ ORACLE_SID }} {{ DAY_DATE.stdout }} /home/oracle {{ Automate_DIR }}"
+      register: export_db_status
+
+    - name: Debug export_db_status variable 
+      debug:
+        var: export_db_status
+
+    # Prepare PAR file for export 
+    ### Prepare PAR file for export ###
+    - name: Import PAR file prepare tasks
+      import_tasks: par_file_prepare.yaml
+        
+    # Step 04: Export Weblogic 
+    - name: Export Weblogic in Database on D-1 server
+      become_user: oracle
+      shell: "{{ oracle_script_dir }}/expdp_weblogic.sh {{ ORACLE_SID }} {{ DAY_DATE.stdout }} /home/oracle {{ Automate_DIR }} {{ OWNER }}"
+      register: export_weblogic_status
+
+    # Debug export_weblogic result
+    - name: Debug export_weblogic_status variable 
+      debug:
+        var: export_weblogic_status
+
+    # Searching for "successfully completed" in export_weblogic_status result
+    - name: Searching for Weblogic export successfully result 
+      debug:
+        msg: "Weblogic export task is successfully completed"
+      when: "'successfully completed' in export_weblogic_status.stderr"
+      
+    # Force to fail if cannot find "successfully completed" in export_weblogic_status.stderr
+    - name: Searching for Weblogic export successfully result 
+      fail:
+        msg: "Weblogic export task is not complete"
+      when: "'successfully completed' not in export_weblogic_status.stderr"
+
+    # Step 05: Shutdown Database
+    - name: Shutdown database
+      become_user: oracle
+      shell: "{{ oracle_script_dir }}/shutdown_database.sh {{ ORACLE_SID }} {{ DAY_DATE.stdout }} /home/oracle {{ Automate_DIR }}"
+      register: shutdown_database
+
+    - name: Debug shutdown_database variable 
+      debug:
+        var: shutdown_database
+
+  when: 
+    - not check_db_result.failed

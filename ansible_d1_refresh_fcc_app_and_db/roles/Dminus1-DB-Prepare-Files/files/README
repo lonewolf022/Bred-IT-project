@@ -1,0 +1,8 @@
+1-freeze db
+2.unfreeze db
+3.genalluser
+4.export FCC data and Weblogic
+5.shutdown D1
+6.Startup D1
+7.Import FCC user and password
+8.Import Weblogic

@@ -1,0 +1,123 @@
+---
+# Cleanup old log
+- name: Clear trace refresh log
+  shell: find /tmp/* -type f -name "trace_refresh*.done" -mtime +3 -delete
+
+############################## Prepare tasks ###############################
+
+- name: PREPARE | Check Permission
+  file:
+   path: "{{ item }}"
+   owner: "{{ ora_user }}"
+   group: "{{ ora_user }}"
+   recurse: yes
+   mode: 0755
+   state: directory
+  with_items:
+    - "{{ Automate_DIR }}"
+
+# - name: CheckPoint Step2 is pass
+#   stat:
+#     path: '{{ Automate_DIR }}/run/Step2.run'
+#   register: Step2_done
+
+- name: PREPARE | Check DATABASE STATE
+  become_user: "{{ ora_user }}"
+  shell: |
+          echo -e "SET HEADING OFF feedback OFF \nSELECT STATUS FROM V\$INSTANCE; \nEXIT;\n" | {{ ORACLE_HOME }}/bin/sqlplus -s / as sysdba | sed '/^[[:space:]]*$/d'  | sed 'H;1h;$!d;x;y/\n/,/'
+  environment:
+       ORACLE_BASE: "{{ ORACLE_BASE }}"
+       ORACLE_HOME: "{{ ORACLE_HOME }}"
+       ORACLE_SID: "{{ ORACLE_SID }}"
+  register: DB_STATE
+
+
+- name: PREPARE | Check DATABASE STATUS
+  
+  become_user: "{{ ora_user }}"
+  shell: |
+          echo -e "SET HEADING OFF feedback OFF \nSELECT DATABASE_STATUS FROM V\$INSTANCE; \nEXIT;\n" | {{ ORACLE_HOME }}/bin/sqlplus -s / as sysdba | sed '/^[[:space:]]*$/d'  | sed 'H;1h;$!d;x;y/\n/,/'
+  environment:
+       ORACLE_BASE: "{{ ORACLE_BASE }}"
+       ORACLE_HOME: "{{ ORACLE_HOME }}"
+       ORACLE_SID: "{{ ORACLE_SID }}"
+  register: DB_STATUS
+
+- name: PREPARE | Database Status
+  vars:
+    msg: |
+      DB STATE :{{ DB_STATE.stdout }}
+      DB STATUS :{{ DB_STATUS.stdout }}
+  run_once: true
+  debug:
+    msg: "{{ msg.split('\n') }}"
+
+- fail:
+   msg: "DATABASE STATE not OPEN"
+  when:
+     - DB_STATE.stdout != "OPEN"
+
+# Block:
+# Block module will perform when Database state is "OPEN"
+
+- name: Validate and prepare for export
+  block:
+
+    - name: PREPARE | List Schema RCU for Weblogic
+      register: RCU_SCHEMA
+      become_user: "{{ ora_user }}"
+      shell: |
+              echo -e "SET HEADING OFF feedback OFF \nSELECT USERNAME FROM all_users where REGEXP_LIKE (USERNAME, '*ODT|*_IAU*|*_WLS|*_OPSS|*_STB') and USERNAME not like 'FCCWS%'; \nEXIT;\n" | {{ ORACLE_HOME }}/bin/sqlplus -s / as sysdba | sed '/^[[:space:]]*$/d'  | sed 'H;1h;$!d;x;y/\n/,/'
+      environment:
+          ORACLE_BASE: "{{ ORACLE_BASE }}"
+          ORACLE_HOME: "{{ ORACLE_HOME }}"
+          ORACLE_SID: "{{ ORACLE_SID }}"
+
+    - name: PREPARE | List remap_schema  RCU for Weblogic
+      register: REMAP_SCHEMA
+      become_user: "{{ ora_user }}"
+      shell: |
+                echo -e "SET HEADING OFF feedback OFF \nSELECT USERNAME FROM all_users where REGEXP_LIKE (USERNAME, '*ODT|*_IAU*|*_WLS|*_OPSS|*_STB') and USERNAME not like 'FCCWS%'; \nEXIT;\n" | {{ ORACLE_HOME }}/bin/sqlplus -s / as sysdba | sed '/^[[:space:]]*$/d'  | awk '{print $1":"$1}' | sed 'H;1h;$!d;x;y/\n/,/'
+      environment:
+          ORACLE_BASE: "{{ ORACLE_BASE }}"
+          ORACLE_HOME: "{{ ORACLE_HOME }}"
+          ORACLE_SID: "{{ ORACLE_SID }}"
+
+    - name: PREPARE | Get ORADATA_DIR
+      register: oradata_dir
+      become_user: "{{ ora_user }}"
+      shell: |
+                echo -e "SET HEADING OFF feedback OFF \nselect  distinct substr(file_name, 1, instr(file_name, '/', -1, 2)) as ORADATA_DIR from dba_data_files; \nEXIT;\n" | {{ ORACLE_HOME }}/bin/sqlplus -s / as sysdba | sed '/^[[:space:]]*$/d' | sed 's/.$//'
+      environment:
+          ORACLE_BASE: "{{ ORACLE_BASE }}"
+          ORACLE_HOME: "{{ ORACLE_HOME }}"
+          ORACLE_SID: "{{ ORACLE_SID }}"
+
+    #
+    # - debug:
+    #     msg: "RCU SCHEMA USER LIST : {{RCU_SCHEMA.stdout_lines}}"
+
+    - name: Validate RCU USER
+      vars:
+        msg: |
+          RCU SCHEMA :{{ RCU_SCHEMA.stdout }}
+          RCU SCHEMA REMAP :{{ REMAP_SCHEMA.stdout }}
+      run_once: true
+      debug:
+        msg: "{{ msg.split('\n') }}"
+
+    - name: PREPARE |  par file for backup {{ ORACLE_SID }}
+      become_user: "{{ ora_user }}"
+      template:
+        src: "{{ item.template_name }}"
+        dest: "{{ Automate_DIR }}/par/{{ item.file_name }}"
+        mode: 0755
+      with_items:
+        - { template_name: exp_fcc_param.j2 , file_name: "exp_fcc_param_{{ ORACLE_SID }}.par" }
+        - { template_name: exp_fcc_weblogic_param.j2 , file_name: "exp_fcc_weblogic_param_{{ ORACLE_SID }}.par" }
+        - { template_name: imp_weblogic_data.j2 , file_name: "imp_weblogic_data_{{ ORACLE_SID }}.par" }
+        - { template_name: imp_weblogic_meta.j2 , file_name: "imp_weblogic_meta_{{ ORACLE_SID }}.par" }
+
+  when:
+    - DB_STATE.stdout == "OPEN"
+
