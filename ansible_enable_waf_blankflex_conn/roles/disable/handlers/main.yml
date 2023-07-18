@@ -1,0 +1,6 @@
+---
+# file: roles/common/handlers/main.yml
+- name: reload httpd
+  systemd:
+    name: httpd.service
+    state: reloaded

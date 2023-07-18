@@ -1,0 +1,214 @@
+---
+- name:             "Read Database Environment"
+  include_tasks:    "profile/oracle_env.yml"
+#
+- name:             ORACLE DB |Create directory Scripts
+  file:             state=directory path=/Automate/Scripts/logs mode=0755  owner=oracle  group=oracle
+
+- name:             ORACLE DB | Tranfer Scrpt
+  copy:             src="{{item}}"  dest="/Automate/Scripts/LONG_RUNNING_SESSION.prc" mode=0755 owner=oracle  group=oracle
+  with_items:
+  - LONG_RUNNING_SESSION_v12.prc
+  # when: 'Bank == "BFL" or Bank == "BBC"'
+
+# - name:             ORACLE DB | Tranfer Scrpt
+#   copy:             src="{{item}}"  dest="/Automate/Scripts/LONG_RUNNING_SESSION.prc" mode=0755 owner=oracle  group=oracle
+#   with_items:
+#   - LONG_RUNNING_SESSION_v14.prc
+#   when: 'Bank == "BCI" or Bank == "BBF"'
+#
+- name:           ORACLE DB  |  Setup prc LONG_RUNNING_SESSION
+  become_user:    oracle
+  register:       SETUP_CHECK_LONG_RUNNING_SESSION
+  ignore_errors:  yes
+  shell:          |
+         #!/bin/bash
+         export ORACLE_SID={{ORACLE_SID}}
+         rm -f /Automate/Scripts/logs/LONG_RUNNING_SESSION.log
+         {{ORACLE_HOME}}/bin/sqlplus -s "/as sysdba" <<-EOF
+         spool /Automate/Scripts/logs/LONG_RUNNING_SESSION.log
+         @/Automate/Scripts/LONG_RUNNING_SESSION.prc
+         spool off
+         EOF
+  environment:
+       ORACLE_BASE: "{{ORACLE_BASE}}"
+       ORACLE_HOME: "{{ORACLE_HOME}}"
+  when:           '"_db" in jenkins_application'
+#
+- name:           ORACLE DB |Verify  SPOOL
+  ignore_errors:  yes
+  shell:          |
+                      STANDARD_OUTPUT_MESSAGES_FILE="/Automate/Scripts/logs/LONG_RUNNING_SESSION.log"
+                      #EXCEPTION="ORA-00955|ORA-02260"
+                      EXCEPTION="ORA-00955"
+                      ( grep '[O,S,P,U,L][R,P,L,D]A-[0-9][0-9][0-9][0-9][0-9]:' ${STANDARD_OUTPUT_MESSAGES_FILE}  | sort  | uniq | egrep -vi "$EXCEPTION"
+                      grep 'Job "SYS"."SYS_IMPORT_SCHEMA_[0-9][0-9]" stopped due to fatal error at' ${STANDARD_OUTPUT_MESSAGES_FILE}
+                      grep 'SP2-[0-9][0-9][0-9][0-9][0-9]:' ${STANDARD_OUTPUT_MESSAGES_FILE}   | sort  | uniq | egrep -vi "$EXCEPTION"
+                      grep 'SP2-[0-9][0-9][0-9][0-9]:' ${STANDARD_OUTPUT_MESSAGES_FILE}   | sort  | uniq | egrep -vi "$EXCEPTION"
+                      grep 'PLS-[0-9][0-9][0-9][0-9][0-9]:' ${STANDARD_OUTPUT_MESSAGES_FILE}  | sort  | uniq |egrep -vi "$EXCEPTION"
+                      grep 'UDE-[0-9][0-9][0-9][0-9][0-9]:' ${STANDARD_OUTPUT_MESSAGES_FILE}   | sort  | uniq |egrep -vi "$EXCEPTION"
+                      grep 'LRM-[0-9][0-9][0-9][0-9][0-9]:' ${STANDARD_OUTPUT_MESSAGES_FILE}  | sort  | uniq | egrep -vi "$EXCEPTION"
+                      grep -i ' not found in ' ${STANDARD_OUTPUT_MESSAGES_FILE} | egrep -vi "ARA_FIL.OPS_PART_TRACKING_LOG") | sed "s/'//g"
+                      exit 0
+  register:       PRINT_SPOOL
+
+- fail:
+    msg:          "{{SETUP_CHECK_LONG_RUNNING_SESSION.stdout_lines}}"
+  when:           PRINT_SPOOL.rc != 0
+
+# - name:             ORACLE DB  | run EXECUTE CHECK_STATEMENT_LONG_RUNNING {{SESSION_DB.split(' ') | first}}
+#   become_user:      oracle
+#   register:         CHECK_LONG_RUNNING_SESSION
+#   shell:            |
+#          #!/bin/bash
+#          export ORACLE_SID={{ORACLE_SID}}
+#          echo -e "SET HEADING OFF FEEDBACK OFF\nEXECUTE CHECK_STATEMENT_LONG_RUNNING {{SESSION_DB.split(' ') | first}}" | {{ORACLE_HOME}}/bin/sqlplus -s  {{LOGIN}}@{{ORACLE_SID}}
+#   environment:
+#        ORACLE_BASE: "{{ORACLE_BASE}}"
+#        ORACLE_HOME: "{{ORACLE_HOME}}"
+#   when:             '"_db" in jenkins_application'
+#
+# - name:           ORACLE DB  |  SPOOL for send email
+#   become_user:    oracle
+#   register:       SPOOL
+#   ignore_errors:  yes
+#   shell:          |
+#          #!/bin/bash
+#          export ORACLE_SID="{{ORACLE_SID}}"
+#          rm -f /Automate/Scripts/logs/LONG_RUNNING_SESSION.spool
+#          {{ORACLE_HOME}}/bin/sqlplus -s {{LOGIN}}@{{ORACLE_SID}} <<-EOF
+#          spool /Automate/Scripts/logs/LONG_RUNNING_SESSION.spool
+#          prompt "-------------------------------BEFORE Kill ------------------------------"
+#          prompt RUN procedure  "EXECUTE CHECK_STATEMENT_LONG_RUNNING {{SESSION_DB.split(' ') | first}}"
+#          EXECUTE CHECK_STATEMENT_LONG_RUNNING {{SESSION_DB.split(' ') | first}}
+#          prompt "-------------------END CHECK_STATEMENT_LONG_RUNNING-------------------"
+#          prompt RUN procedure  "EXECUTE CHECK_LONG_RUNNING_SESSION"
+#          EXECUTE CHECK_LONG_RUNNING_SESSION
+#          prompt "----------------------END CHECK_LONG_RUNNING_SESSION----------------------------"
+#          spool off
+#          EOF
+#   environment:
+#        ORACLE_BASE: "{{ORACLE_BASE}}"
+#        ORACLE_HOME: "{{ORACLE_HOME}}"
+#   when:           '"_db" in jenkins_application'
+#   failed_when:   SPOOL.stdout is  search("(ORA|SP2)-[0-9]+:|(^ERROR)")
+#
+# - debug:
+#     msg:            "{{CHECK_LONG_RUNNING_SESSION.stdout_lines}}"
+
+# - name:             ORACLE DB  | Check Session ID is  ACTIVATE
+#   register:         GET_ID
+#   become_user:      oracle
+#   shell:            |
+#          #!/bin/bash
+#          export ORACLE_SID={{ORACLE_SID}}
+#          echo -e "SET HEADING OFF FEEDBACK OFF\nEXECUTE CHECK_LONG_RUNNING_SESSION" | {{ORACLE_HOME}}/bin/sqlplus -s  {{LOGIN}}@{{ORACLE_SID}} | column -t | grep  '{{SESSION_DB.split(' ') | first}}' | awk '{print $1"+"$3}'
+#   environment:
+#        ORACLE_BASE: "{{ORACLE_BASE}}"
+#        ORACLE_HOME: "{{ORACLE_HOME}}"
+#   when:             '"_db" in jenkins_application'
+#   failed_when:   GET_ID.stdout is  search("(ORA|SP2)-[0-9]+:|(^ERROR)")
+
+- name:             STATUS  SESSION ID BEFORE
+  vars:
+    msg:            |
+         ID                  : {{SESSION_DB.split(' ') | first}}
+         STATUS              : {{SESSION_DB.split(' ')[2] | default('')}}
+  debug:
+    msg:            "{{ msg.split('\n') }}"
+
+- name:             DEFINE ID
+  set_fact:
+    ID:             "{{SESSION_DB.split(' ') | first}}"
+    STATUS:         "{{SESSION_DB.split(' ')[2] | default('')}}"
+#
+# - debug:
+#     msg: "{{STATUS}}"
+
+- name:             ORACLE DB  | Kill SESSION  is  ACTIVATE
+  register:         KILL_ID
+  become_user:      oracle
+  shell:            |
+         #!/bin/bash
+         export ORACLE_SID={{ORACLE_SID}}
+         if [ ! -z "{{ID}}" ]  && [ "{{STATUS}}" == "ACTIVE" ] ; then
+          echo -e "SET HEADING OFF FEEDBACK OFF\nEXECUTE KILL_LONG_RUNNING_SESSION {{ID}}" | {{ORACLE_HOME}}/bin/sqlplus -s  {{LOGIN}}@{{ORACLE_SID}}
+         else
+          echo "NOT Found Process ID"
+         fi
+  environment:
+       ORACLE_BASE: "{{ORACLE_BASE}}"
+       ORACLE_HOME: "{{ORACLE_HOME}}"
+  failed_when:   KILL_ID.stdout is  search("(ORA|SP2)-[0-9]+:|(^ERROR)")
+
+#
+- debug:
+    msg: "DB_SESSION already Kill"
+  when:  KILL_ID.stdout == ""
+
+- debug:
+    msg: "DB_SESSION Error for  Kill {{ID}} or not found Process {{ID}}"
+  when:  KILL_ID.stdout != ""
+
+# - name:             ORACLE DB  | run EXECUTE CHECK_LONG_RUNNING_SESSION After Kill
+#   become_user:      oracle
+#   register:         A_CHECK_LONG_RUNNING_SESSION
+#   shell:            |
+#          #!/bin/bash
+#          export ORACLE_SID={{ORACLE_SID}}
+#          echo   "Verify DB_SESSION After Kill" | tee -a /Automate/Scripts/logs/LONG_RUNNING_SESSION.spool
+#          echo -e "SET HEADING OFF FEEDBACK OFF\nEXECUTE CHECK_LONG_RUNNING_SESSION" | {{ORACLE_HOME}}/bin/sqlplus -s  {{LOGIN}}@{{ORACLE_SID}} | column -t | tee -a /Automate/Scripts/logs/LONG_RUNNING_SESSION.spool
+#          KILL_ID="{{KILL_ID.stdout}}"
+#          if [ -z $KILL_ID  ];then
+#             echo "DB_SESSION already Kill" | tee -a /Automate/Scripts/logs/LONG_RUNNING_SESSION.spool
+#          else
+#             echo "DB_SESSION Error for  Kill {{ID}} or not found Process {{ID}}" | tee -a /Automate/Scripts/logs/LONG_RUNNING_SESSION.spool
+#          fi
+#   environment:
+#        ORACLE_BASE: "{{ORACLE_BASE}}"
+#        ORACLE_HOME: "{{ORACLE_HOME}}"
+#   when:             '"_db" in jenkins_application'
+#   failed_when:   A_CHECK_LONG_RUNNING_SESSION.stdout is  search("(ORA|SP2)-[0-9]+:|(^ERROR)")
+#
+# - debug:
+#     msg:            "{{A_CHECK_LONG_RUNNING_SESSION.stdout_lines}}"
+#
+# - name: print resault to email
+#   shell: echo -e "{{A_CHECK_LONG_RUNNING_SESSION.stdout}}" | awk '{print "<p>"$0"</p>"}'
+#   register: BODY_verify
+#
+# - name:                      ORACLE DB | Tranfer SPOOL to Jenkins After Kill
+#   become_user:               svc_aiautomate
+#   shell:                     rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/Automate/Scripts/logs/LONG_RUNNING_SESSION.spool  {{UPLOAD_PATH}}/{{BUILD_NAME}}_{{Bank}}_{{Branch}}_{{ticket}}_{{date_time}}/Spools
+#   delegate_to:               "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+#   when:             '"_db" in jenkins_application'
+#
+#
+# - name:           Send Email
+#   shell:          |
+#          EMAIL="mysupport@bred-it.com"
+#          ATTACHMENT1=" {{UPLOAD_PATH}}/{{BUILD_NAME}}_{{Bank}}_{{Branch}}_{{ticket}}_{{date_time}}/Spools/LONG_RUNNING_SESSION.spool"
+#          SUBJECT="[Ticket#{{ticket}}] [{{Bank}}] [{{Branch}}] Kill  longrunning User on  Database"
+#          BODY='
+#          <span style="font-size:12px;"><span style="font-family:arial,helvetica,sans-serif;">
+#          <strong>----&nbsp;Host Name&nbsp;----</strong><br />
+#          {{server}}<br />
+#          <p><strong>Kill  Process longrunning  STATUS&nbsp;: {%if KILL_ID.stdout == "" %}&nbsp;<span style="color:#2ecc71">SUCCESS&nbsp;</span>{% else %}&nbsp;<span style="color:#c0392b">FAIL&nbsp;</span>{% endif %}</strong></p>
+#          <strong>BANK</strong>: &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;{{ Bank }}<br />
+#          <strong>ENVIRONMENT</strong>: &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;{{ Branch }}<br />
+#          <strong>QUERY TIME</strong>: &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;{{ date_time }}<br />
+#          <strong>----&nbsp;Deploy by&nbsp;----</strong><br />
+#          {{BUILD_USER}}<br />
+#          <strong>----&nbsp;EXECUTE CHECK_LONG_RUNNING_SESSION After Kill&nbsp;----</strong><br />
+#          {{BODY_verify.stdout}}<br />
+#          <strong>----&nbsp;Please check spool on Attachment. &nbsp;----</strong><br />
+#          </span></span>
+#          '
+#          echo "$BODY" | mutt -e "my_hdr From: Kill Process longrunning User on  Database by Jenkins <applications.integration@bred-it.com>"  -e "set content_type=text/html"  -s "$SUBJECT"  -a $ATTACHMENT1 -- $EMAIL
+#   delegate_to:    "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+#
+#
+# - name:           Clear spool after sync
+#   shell:          find  "{{ spool_dir }}" -type f -name "longrunning_*.[Ss][pP][lL]" -mmin +240 -exec rm -f {} \;
+#   when:           '"fcc_db" in jenkins_application'

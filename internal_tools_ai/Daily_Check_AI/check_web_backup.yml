@@ -1,0 +1,42 @@
+- hosts:               mbkcslsharedp01.bred-it.local
+  vars:
+    html_dir:          '/var/backup/html'
+    mysql_dir:         '/var/backup/mysql'
+  gather_facts:        no
+  tasks:
+    - name:            Remove old trace file first
+      shell:           "find /tmp/* -type f -name 'daily_check_*.log' -delete"
+      become:          true
+
+
+    - name:            Check html backups
+      shell:           "ls -lrth {{html_dir}}/{{ item }}/ | tail -3"
+      register:        backup_html
+      become:          true
+      with_items:
+          - "bfl-bred"
+          - "bbf"
+          - "bbc"
+          - "bit"
+          - "bvl"
+          - "bvlsb"
+          - "bcimr_prd"
+
+    - debug:           msg="{{item.output}}"
+      with_items:      "{{ backup_html.results | json_query('[].{output: stdout_lines}')}}"
+
+    - name:            Check mysql backups
+      shell:           "ls -lrth {{mysql_dir}}/{{ item }}/ | tail -3"
+      register:        backup_mysql
+      become:          true
+      with_items:
+          - "bfl-bred"
+          - "bbf"
+          - "bbc"
+          - "bit"
+          - "bvl"
+          - "bvlsb"
+          - "bcimr_prd"
+
+    - debug:           msg="{{item.output}}"
+      with_items:      "{{backup_mysql.results | json_query('[].{output: stdout_lines}')}}"

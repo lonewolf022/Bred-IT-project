@@ -1,0 +1,68 @@
+- hosts:           mbcbkkctmsrvp01.bred-it.local
+  become:          true
+  gather_facts:    no
+  tasks:
+   - name:            Remove old trace file first
+     shell:           "find /tmp/* -type f -name daily_check_*.log -delete"
+     become:          true
+     ignore_errors: true
+
+   - name:         Copy script
+     copy:
+      src:         "files/{{ item }}"
+      dest:        "/home/ctrlm/{{ item }}"
+      mode:        '0755'
+      owner:       ctrlm
+      group:       ctrlm
+     with_items:
+        - ctmprof.sh
+        - ctm_agstatus.sh
+
+   - name:         Check MBK Control-m Agent & Control-m Job NOT OK
+     shell:        bash /home/ctrlm/ctmprof.sh
+     become_user:  ctrlm
+     register:     ctrlm_agent_status
+     failed_when:  ctrlm_agent_status.rc != 1 and ctrlm_agent_status.rc != 0
+     check_mode:   no
+
+   - debug:        var=ctrlm_agent_status.stdout_lines
+
+   - name:                      Transfer log To Jenkins
+     become_user: svc_aiautomate
+     shell: rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/tmp/daily_check_*.log  /home/svc_aiautomate/
+     delegate_to:   "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+
+- hosts:           vuvli-ctlm-prd1.bredvu.local
+  become:          true
+  gather_facts:    no
+  tasks:
+   - name:            Remove old trace file first
+     shell:           "find /tmp/* -type f -name daily_check_*.log -delete"
+     become:          true
+     ignore_errors: true
+
+   - name:         Copy script
+     copy:
+      src:         "files/{{ item }}"
+      dest:        "/home/ctrlm/{{ item }}"
+      mode:        '0755'
+      owner:       ctrlm
+      group:       ctrlm
+     with_items:
+        - ctmprof.sh
+        - ctm_agstatus.sh
+
+   - name:         Check BVL Control-m Agent & Control-m Job NOT OK
+     shell:        bash /home/ctrlm/ctmprof.sh
+     become_user:  ctrlm
+     register:     ctrlm_bvl_status
+     failed_when:  ctrlm_bvl_status.rc != 1 and ctrlm_bvl_status.rc != 0
+     check_mode:   no
+
+   - debug:        var=ctrlm_bvl_status.stdout_lines
+
+   - name:                      Transfer log To Jenkins
+     become_user: svc_aiautomate
+     shell: rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/tmp/daily_check_*.log  /home/svc_aiautomate/
+     delegate_to:   "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"

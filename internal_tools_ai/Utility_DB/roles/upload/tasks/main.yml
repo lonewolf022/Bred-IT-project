@@ -1,0 +1,4 @@
+---
+- name:           Upload spool to workspace
+  import_tasks:   upload_spool.yml
+         

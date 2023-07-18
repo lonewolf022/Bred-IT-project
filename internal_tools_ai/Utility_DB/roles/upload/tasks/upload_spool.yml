@@ -1,0 +1,35 @@
+---
+- name:            SetFact
+  set_fact:
+    env:           "{{ bank + branch}}"
+    working_dir:   '/home/svc_aiautomate'
+    workspace:     '/var/lib/jenkins/workspace/{{ job }}'
+
+
+#- name:            Clear spool after 3 Days
+#  shell:           find  "{{ working_dir }}/spools"  -name "*.SPL" -mtime +3 -exec rm -f {} \;
+#  become:          true
+
+- name: Prepare Directory spools
+  file:
+   state: directory
+   path: "{{ item }}"
+   owner:  jenkins
+   group:  jenkins
+  become:  true
+  with_items:
+   - "{{workspace}}"
+
+
+- name:            Upload spool to Jenkins
+  shell:           "mv {{working_dir}}/spools/*.spl {{workspace}}/."
+  become:          true
+  register:        upload_spool_status
+
+
+- name:              Clear spool after 2 Days on workspace
+  shell:             find {{ workspace }}/ -type f -name "*.[Ss][pP][lL]" -mtime +2 -exec rm -f {} \;
+  become:            true
+  register: clean_spool
+  failed_when: clean_spool.rc == '2'
+  delegate_to:         "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"

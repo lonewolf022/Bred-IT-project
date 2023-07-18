@@ -1,0 +1,12 @@
+---
+# Upload file name
+FILE_NAME: "{{ FileName }}"
+
+# repository URL that we can get it on Web
+GITLAB_REPO_URL: "git@git.bred-it.com:AI/ansible_deploy_dwh_sql_script.git"
+
+# Jenkins upload path location
+UPLOAD_PATH: "/var/lib/jenkins/workspace/Deploy-DWH-SQL-Script_AI"
+
+# Path to copy file into that and add it into git
+FILE_PATH: "{{ UPLOAD_PATH }}/repo/upload"

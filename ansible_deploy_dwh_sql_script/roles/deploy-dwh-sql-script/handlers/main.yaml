@@ -1,0 +1,8 @@
+---
+- name: clenup file downloaded
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items: 
+    - "{{ SQL_FILE_PATH }}/SQLFILE"
+    - "{{ SQL_FILE_PATH }}/{{ FILE_NAME }}"

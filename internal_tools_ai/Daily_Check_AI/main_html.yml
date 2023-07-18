@@ -1,0 +1,10 @@
+---
+- import_playbook: check_backup_html.yml
+- import_playbook: check_saphir_backup_html.yml
+- import_playbook: check_ctm_agent_html.yml
+#- import_playbook: check_asiapay_cadencie_html.yml
+- import_playbook: check_ABNotes_html.yml
+- import_playbook: check_bvl_adm_html.yml
+- import_playbook: check_bbf_adm_html.yml
+- import_playbook: check_edm.yml
+- import_playbook: summary_result_html.yml

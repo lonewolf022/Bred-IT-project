@@ -1,0 +1,38 @@
+- hosts:               spedmdmbkcslp1.bred-it-prod.ad.production.local
+  vars:
+    dms_env:                   'MBKEDM_DMSDBP'
+    cnt_env:                   'MBKEDM_CNTDBP'
+    dms_rman_dir:          '/backup/rman/DMSDBP'
+    cnt_rman_dir:           '/backup/rman/CNTDBP'
+  gather_facts:        no
+  tasks:
+    - name:            Remove old trace file first
+      shell:           "find /tmp/* -type f -name daily_check_rman_*.log -delete"
+      become:          true
+      ignore_errors: true
+
+    - name:         Copy script
+      copy:
+       src:         "files/{{ item }}"
+       dest:        "/home/svc_aiautomate/{{ item }}"
+       mode:        '0755'
+       owner:       svc_aiautomate
+      with_items:
+         - db_mon_rman.sh
+
+    - name:            Check DMSDBP backups
+      shell:           bash -x /home/svc_aiautomate/db_mon_rman.sh {{ dms_env }} {{ dms_rman_dir }}
+      register:        backup_dms_rman
+      # become:          true
+    - debug:           msg="{{ backup_dms_rman.stdout_lines }}"
+
+    - name:            Check CNTDBP backups
+      shell:           bash -x /home/svc_aiautomate/db_mon_rman.sh {{ cnt_env }} {{ cnt_rman_dir }}
+      register:        backup_cnt_rman
+      # become:          true
+    - debug:           msg="{{ backup_cnt_rman.stdout_lines }}"
+
+    - name:                      Transfer log To Jenkins
+      become_user: svc_aiautomate
+      shell: rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/tmp/daily_check_rman_*.log  /home/svc_aiautomate/
+      delegate_to:   "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"

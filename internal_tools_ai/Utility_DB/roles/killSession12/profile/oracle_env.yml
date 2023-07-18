@@ -1,0 +1,82 @@
+---
+- name:                        Get APP_AUTOMATE password
+  uri:
+    url:                       "{{satellite_url}}/api/v2/hosts/{{ server | lower }}"
+    user:                      svc_aiautomate
+    password:                  "{{svc_aiautomate_pass}}"
+    method:                    GET
+    force_basic_auth:          yes
+    body_format:               json
+    status_code:               200
+    validate_certs:            false
+  delegate_to:                 localhost
+  register:                    parameters_app_version
+
+# - name:                        Get ORACLE_SID
+#   set_fact:
+#       oracle_sid_curl: "{{parameters_app_version.json |  to_json | from_json | json_query(SID)  | join(', ') }}"
+#   vars:
+#       SID:      "all_parameters[? name=='oracle_sid'].value"
+#
+# - fail:
+#      msg:                      "Please Check ORALCE_SID parameters in satellite "
+#   when:                        oracle_sid_curl == ""
+#
+# - name:                        "List Oracle_SID"
+#   set_fact:
+#     oracle_sid_all:            "{{ oracle_sid_all | default([]) | union([item]) }}"
+#   with_items:
+#     - "{{oracle_sid_curl.split(',') }}"
+
+- name:                        Set ORACLE_SID
+  set_fact:
+    ORACLE_SID:                "{{sid}}"
+
+- name: Set APP_AUTOMATE PWD
+  set_fact:
+      APP_AUTOMATE_PWD:            "{{parameters_app_version.json |  to_json | from_json | json_query(APP_AUTOMATE_PWD_QUERY)  | join(', ') }}"
+  vars:
+        APP_AUTOMATE_PWD_QUERY:      "all_parameters[? name=='app_automate_{{ORACLE_SID | lower}}'].value"
+- name:                        Print ENV USER
+  become_user:                 oracle
+  vars:
+     db:                       "{{server}}"
+  shell:                       |
+          #!bin/bash
+          source /home/oracle/.bash_profile
+          echo "ORACLE_BASE=$ORACLE_BASE"
+          echo "ORACLE_HOME=$ORACLE_HOME"
+          echo "PATH=$PATH"
+  register:                    oracle_profile
+  delegate_to:                 "{{ hostvars[db]['ansible_host']}}"
+
+- fail:
+    msg: "APP_AUTOMATE Password is not define on satellite"
+  when: APP_AUTOMATE_PWD == ""
+
+- name:                        "Set Oracle Profile"
+  set_fact:
+      ORACLE_BASE:             "{{ oracle_profile.stdout | regex_findall('ORACLE_BASE=(.+)') | first | regex_replace('\\s', '') }}"
+      ORACLE_HOME:             "{{ oracle_profile.stdout | regex_findall('ORACLE_HOME=(.+)') | first | regex_replace('\\s', '')}}"
+      LOGIN:                   "APP_AUTOMATE/{{APP_AUTOMATE_PWD}}"
+#
+# - debug:
+#     msg: "OWNER : {{owner}}"
+- name:                              validate Login APP_AUTOMATE
+  become_user:                       oracle
+  vars:
+     db:                             "{{server}}"
+  shell:                             |
+                    #!bin/bash
+                    source /home/oracle/.bash_profile > /dev/null
+                    export  ORACLE_SID={{ORACLE_SID}}  > /dev/null
+                    exit| sqlplus -s -L "{{LOGIN}}"
+                    if [[ $? -ne 0 ]]; then
+                      echo "incorrect"
+                    fi
+  register:                          ValidateLogin
+  delegate_to:                       "{{ hostvars[db]['ansible_host']}}"
+
+- fail:
+    msg: "ORA-01017: invalid username/password; logon denied"
+  when: '"incorrect" in   ValidateLogin.stdout'

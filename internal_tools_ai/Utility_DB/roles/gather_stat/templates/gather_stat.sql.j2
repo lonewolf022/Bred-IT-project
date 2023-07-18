@@ -1,0 +1,11 @@
+begin
+DBMS_STATS.gather_table_stats(
+ownname=>'{{owner}}',
+tabname=>'{{TABLE_NAME}}',
+estimate_percent => DBMS_STATS.AUTO_SAMPLE_SIZE,
+cascade => TRUE,
+force=> TRUE ,
+degree=>8
+);
+end;
+/

@@ -1,0 +1,16 @@
+satellite_url: "https://spsatombkcslp1.bred-it-prod.ad.production.local"
+
+#UAT
+BCI_UAT2: uat2-connect.bcimr.dj
+BFL_UAT2: uat2-connect.bfl-bred.com
+BBC_UAT2: uat2-connect.bredcambodia.com
+BBF_UAT2: uat2-connect.bred.com.fj
+BCI_UAT: uat-connect.bcimr.dj
+BFL_UAT: uat-connect.bfl-bred.com
+BBC_UAT: uat-connect.bredcambodia.com
+BBF_UAT: uat-connect.bred.com.fj
+#Prod
+BCI_PRD: connect.bcimr.dj
+BFL_PRD: connect.bfl-bred.com
+BBC_PRD: connect.bredcambodia.com
+BBF_PRD: connect.bred.com.fj

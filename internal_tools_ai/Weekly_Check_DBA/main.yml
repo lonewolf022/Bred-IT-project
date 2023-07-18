@@ -1,0 +1,19 @@
+---
+- import_playbook: check_bbc_rman.yml
+- import_playbook: check_bbf_rman.yml
+- import_playbook: check_bfl_rman.yml
+- import_playbook: check_bcimr_rman.yml
+- import_playbook: check_bvl_rman.yml
+- import_playbook: check_edm_rman.yml
+- import_playbook: check_mbk_sharedb_rman.yml
+- import_playbook: check_bvl_sharedb_rman.yml
+- import_playbook: check_mbk_cad_rman.yml
+- import_playbook: check_bbc_cad_rman.yml
+- import_playbook: check_bvl_cad_rman.yml
+- import_playbook: check_bbs_cad_rman.yml
+
+- import_playbook: Weekly_Check_DBA_check_bbcbfx_rman.yml
+- import_playbook: Weekly_Check_DBA_check_bbfbfx_rman.yml
+- import_playbook: Weekly_Check_DBA_check_bbcobp_rman.yml
+
+- import_playbook: summary_result.yml

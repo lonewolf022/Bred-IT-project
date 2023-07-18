@@ -1,0 +1,21 @@
+[non-prd-db]
+spobpdbflcatu1.bfl-prod.ad.production.local env=BFLOBPU1 rman_dir=/backup_obp/UAT14/OBPBFL/RMAN
+spobpdbflcatd1.bfl-prod.ad.production.local env=BFLOBPD1 rman_dir=/backup/DEV14/OBPBFL/rman
+spobpdbbccatu1.bbc-prod.ad.production.local env=BBCOBPU1 rman_dir=/backup_obp/UAT14/OBPBBC/rman
+spobpdbbccatd1.bbc-prod.ad.production.local env=BBCOBPD1 rman_dir=/backup/DEV14/OBPBBC/rman
+spfccdbvlcatd2.bvl-prod.ad.production.local env=BVLDEV1 rman_dir=/backup/DEVV14/BVL/shortterm/rman
+bbcbkkdbd01.bbc.local env=BBCDEV3 rman_dir=/backup_ntap_bbc/PROD/FCCBBCPRD/rman
+spfccdbcicatu3.bcimr-prod.ad.production.local env=BCIUAT1 rman_dir=/backup/UATV14/BCIMR/shortterm/rman
+spfccdbcicatd2.bcimr-prod.ad.production.local env=BCIDEV2 rman_dir=/backup/DEVV14/BCIMR/rman
+spbfxddbbfcatd1.bbf-prod.ad.production.local env=BBFBFXD1 rman_dir=/backup_ntap_bbfflex_ntt/DEV/BBFBFXD1/rman
+spbfxddbbfcatu1.bbf-prod.ad.production.local env=BBFBFXU1 rman_dir=/backup_ntap_bbfflex_ntt02/bankflex/UAT/rman
+spbfxddbbccatd1.bbc-prod.ad.production.local env=BBCBFXD1 rman_dir=/backup_ntap_bbcflex_ntt/DEV/BBCBFXD1/rman
+spbfxddbbccatu1.bbc-prod.ad.production.local env=BBCBFXU1 rman_dir=/backup_ntap_bbcflex_ntt02/bankflex/UAT/rman
+spbfxddbcicatd1.bcimr-prod.ad.production.local env=BCIMRBFXD1 rman_dir=/backup/DEV/BCIBFXD1/rman
+spbfxddbcicatu1.bcimr-prod.ad.production.local env=BCIMRBFXU1 rman_dir=/backup/UAT/BCIBFXU1/rman
+
+# Non Oracle DB
+# mbkbkksphdbd01.bred-it.local 10.11.211.21
+# mbkbkksphdbu01.bred-it.local 10.11.204.10
+# spsphdbvlcatu1.bvl-prod.ad.production.local 10.45.141.17
+# spsphdbvlcatd1.bvl-prod.ad.production.local 10.45.141.18

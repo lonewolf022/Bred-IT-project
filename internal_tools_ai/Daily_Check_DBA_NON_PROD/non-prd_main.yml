@@ -1,0 +1,6 @@
+---
+- name: Import playbook for daily check rman backup result on non production env
+  import_playbook: non-prd_check_rman.yaml
+
+- name: Import playbook for summary_result logs and send email
+  import_playbook: non-prd_summary_result_html.yaml

@@ -1,0 +1,38 @@
+- hosts:               spobpdbbccslp1.bbc-prod.ad.production.local
+  vars:
+    env:               'BBCOBPPRD'
+    rman_dir:          '/backup/PROD/OBPBBC/rman/BBCOBPPRD'
+    date:              "{{ lookup('pipe', 'date -d \"2 day ago\" +\"%Y%m%d\"') }}"
+
+  gather_facts:        no
+  tasks:
+    - name:            Remove old trace file first
+      shell:           "find /tmp/* -type f -name weekly_check_rman_*.log -delete"
+      become:          true
+
+    - name:         Copy script
+      copy:
+       src:         "files/{{ item }}"
+       dest:        "/home/svc_aiautomate/{{ item }}"
+       mode:        '0755'
+       owner:       svc_aiautomate
+      with_items:
+         - db_mon_rman_weekly.sh
+
+
+    - name:            Check rman backups
+      shell:           bash -x /home/svc_aiautomate/db_mon_rman_weekly.sh {{ env }} {{ rman_dir }} {{ date }}
+      register:        backup_bvl_caddb_rman
+      # become:          true
+#      loop_control:
+#             pause: 3
+    - debug:           msg="{{ backup_bvl_caddb_rman.stdout_lines }}"
+
+#    - debug:           msg="{{item.output}}"
+#      with_items:      "{{ backup_html.results | json_query('[].{output: stdout_lines}')}}"
+
+
+    - name:                      Transfer log To Jenkins
+      become_user: svc_aiautomate
+      shell: rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/tmp/weekly_check_rman_*.log  /home/svc_aiautomate/
+      delegate_to:   "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"

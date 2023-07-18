@@ -1,0 +1,111 @@
+---
+- name: non-prd_check_rman
+  hosts: oracle_database_servers_nonprd
+  gather_facts: true
+
+  tasks:
+    - name: Main Block 
+      block:
+        - name: Remove old trace file first
+          shell: "find /tmp/* -type f -name daily_check_rman_*.log -delete"
+          become: true
+          ignore_errors: true
+
+        ### Get Oracle User env ###
+        - name: Get Oracle User env
+          shell: |
+              source /home/oracle/.bash_profile
+              env | grep -E -w 'DAILY_RMAN_DIR|ORACLE_SID' | grep -v PS1 > /tmp/oracle_user_env
+          become: true
+          become_user: oracle
+
+        ### Daily "today" check block ###
+        - name: Block script for check backup for daily
+          block:
+          - name: Copy script
+            copy:
+              src: "files/{{ item }}"
+              dest: "/home/svc_aiautomate/{{ item }}"
+              mode: '0755'
+              owner: svc_aiautomate
+            with_items:
+              - db_mon_rman.sh         
+
+          - name: Check rman backups
+            shell: |
+                export ORACLE_SID=`grep ORACLE_SID /tmp/oracle_user_env | awk -F "=" '{print $2}'`
+                export RMAN_DIR=`grep DAILY_RMAN_DIR /tmp/oracle_user_env | awk -F "=" '{print $2}'`
+                env | grep ORACLE_SID
+                env | grep RMAN_DIR
+                bash -x /home/svc_aiautomate/db_mon_rman.sh ${ORACLE_SID} ${RMAN_DIR}
+            register: backup_rman
+
+          - name: Debug RMAN result
+            debug: msg="{{ backup_rman.stdout_lines }}"
+
+          when: inventory_hostname != ['spfccdbcicatd2.bcimr-prod.ad.production.local', 'bbcbkkdbd01.bbc.local']
+
+        ### Daily "yesterday" check block
+        - name: Block script for check backup for different time zone "yesterday"
+          block:
+          - name: Copy script
+            copy:
+              src: "files/{{ item }}"
+              dest: "/home/svc_aiautomate/{{ item }}"
+              mode: '0755'
+              owner: svc_aiautomate
+            with_items:
+              - db_mon_rman_yesterday.sh
+
+          - name: Check rman backups for "yesterday"
+            shell: |
+                export ORACLE_SID=`grep ORACLE_SID /tmp/oracle_user_env | awk -F "=" '{print $2}'`
+                export RMAN_DIR=`grep DAILY_RMAN_DIR /tmp/oracle_user_env | awk -F "=" '{print $2}'`
+                env | grep ORACLE_SID
+                env | grep RMAN_DIR
+                bash -x /home/svc_aiautomate/db_mon_rman_yesterday.sh ${ORACLE_SID} ${RMAN_DIR}
+            register: backup_rman_yesterday
+
+          - name: Debug RMAN yesterday result
+            debug: msg="{{ backup_rman_yesterday.stdout_lines }}"
+
+          when: inventory_hostname == 'spfccdbcicatd2.bcimr-prod.ad.production.local'
+
+        ### Daily "today" check block specific for bbcbkkdbd01 server ###
+        - name: Block script for check backup for "bbcbkkdbd01" daily
+          block:
+          - name: Copy script
+            copy:
+              src: "files/{{ item }}"
+              dest: "/home/svc_aiautomate/{{ item }}"
+              mode: '0755'
+              owner: svc_aiautomate
+            with_items:
+              - db_mon_rman.sh         
+
+          - name: Check rman backups for "bbcbkkdbd01"
+            shell: |
+                export ORACLE_SID="{{ item.ORACLE_SID }}"
+                export RMAN_DIR="{{ item.RMAN_DIR }}"
+                env | grep ORACLE_SID
+                env | grep RMAN_DIR
+                bash -x /home/svc_aiautomate/db_mon_rman.sh "{{ item.ORACLE_SID }}" "{{ item.RMAN_DIR }}"
+            loop:
+              - { ORACLE_SID: "BBCDEV1", RMAN_DIR: "/backup_ntap_bbc/PROD/FCCBBCPRD/rman" }
+              - { ORACLE_SID: "BBCDEV3", RMAN_DIR: "/backup_NFS/BBCDEV3/rman" }
+            register: backup_rman_bbcbkkdbd01
+
+          - name: Debug RMAN result for "bbcbkkdbd01"
+            debug: msg="{{ backup_rman_bbcbkkdbd01 }}"
+
+          when: inventory_hostname == 'bbcbkkdbd01.bbc.local'
+
+        ######### Transfer log file To Jenkins #########
+
+        - name: Transfer log To Jenkins
+          become: true
+          become_user: svc_aiautomate
+          shell: rsync -apvvzhO --no-perms --progress --stats --rsync-path="sudo rsync" svc_aiautomate@{{ ansible_default_ipv4.address }}:/tmp/daily_check_rman_*.log  /home/svc_aiautomate/rman_non-prd/
+          delegate_to: "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local'].ansible_default_ipv4.address }}"
+      when: inventory_hostname != 'spjenkabitcslp1.bred-it-prod.ad.production.local'
+

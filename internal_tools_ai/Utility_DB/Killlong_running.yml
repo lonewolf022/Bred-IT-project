@@ -1,0 +1,53 @@
+---
+- hosts:                   "{{ server }},spjenkabitcslp1.bred-it-prod.ad.production.local"
+  become:                  true
+  gather_facts:            false
+  vars_files:
+    - vars.yml
+    - svc_aiautomate_secrets.yml
+  pre_tasks:
+  #
+   - name:                 "Set variable satellite URL"
+     include_tasks:        "profile/satellite_url.yml"
+   - name:                 Get App Current Version
+     uri:
+       url:                "{{satellite_url}}/api/v2/hosts/{{ hostname_inv  | lower  }}/parameters/"
+       user:               svc_aiautomate
+       password:           "{{svc_aiautomate_pass}}"
+       method:             GET
+       force_basic_auth:   yes
+       body_format:        json
+       status_code:        200
+       validate_certs:     false
+     delegate_to:          localhost
+     register:             parameters_app_version
+
+   #
+   - name:                 DEFINE Code APP
+     shell:                hostname | cut -c3-5
+     register:             CODE_NAME
+     vars:
+        db:                "{{server}}"
+     delegate_to:          "{{ hostvars[db]['ansible_host']}}"
+
+   - set_fact:
+      jenkins_application: "{{parameters_app_version.json | json_query ('results[? name==`jenkins_application`].value') | join(', ')}}"
+      CODE:                "{{CODE_NAME.stdout | lower}}"
+      BUILD_NAME: "BUILD_{{BUILD_ID}}"
+      date_time: "{{BUILD_TIMESTAMP}}"
+
+   - name: prepare directory for spools
+     file:             state=directory path={{UPLOAD_PATH}}/{{BUILD_NAME}}_{{Bank}}_{{Branch}}_{{ticket}}_{{date_time}}/Spools owner=svc_aiautomate
+     when:                    hostname_inv == "spjenkabitcslp1.bred-it-prod.ad.production.local"
+
+  roles:
+#   - { role: upload, tags: ['load2git'], when: 'tasks == "UPLOAD"'}
+   - { role: killSession, when: '"_db"  in jenkins_application and (Bank == "BCI" or Bank == "BBF")'}
+   - { role: killSession12, when: '"_db"  in jenkins_application and (Bank == "BBC" or Bank == "BFL")'}
+
+  post_tasks:
+    - name:              Delete Build in Workspacee after 90 days
+      shell:             find {{UPLOAD_PATH}}/ -type d -ctime +90 -print -delete
+      become:            true
+      ignore_errors:     yes
+      when:                    hostname_inv == "spjenkabitcslp1.bred-it-prod.ad.production.local"

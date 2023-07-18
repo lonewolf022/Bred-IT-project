@@ -1,0 +1,25 @@
+---
+- name: Check host id on satellite
+  uri:
+    url: "https://spsatombkcslp1.bred-it-prod.ad.production.local/api/v2/hosts/?search=name~{{ hostname_inv  | lower  }}"
+    user: svc_aiautomate
+    password: "{{svc_aiautomate_pass}}"
+    method: GET
+    force_basic_auth: yes
+    body_format: json
+    status_code: 200
+    validate_certs:   false
+  delegate_to: localhost
+  register: host_found
+  ignore_errors: true
+
+- set_fact:
+       search_host: "{{host_found.json | json_query ('results[]') | join(', ')}}"
+
+- set_fact:
+       satellite_url: "https://spsatombkcslp1.bred-it-prod.ad.production.local"
+  when: search_host != ""
+
+- set_fact:
+       satellite_url: "https://mbsbkkkatp01.bred-it.local"
+  when: search_host == ""

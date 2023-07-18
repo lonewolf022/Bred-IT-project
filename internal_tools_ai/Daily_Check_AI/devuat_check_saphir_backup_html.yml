@@ -1,0 +1,191 @@
+---
+- hosts:                mbkbkksphdbd01.bred-it.local
+  vars:
+    saphir_backup_dir:  '/backup_non_prd/{{ myhostname.stdout }}'
+
+  gather_facts:         no
+  tasks:
+    - name:            Remove old trace file first
+      shell:           "find /tmp -type f -name 'daily_check_*.log' -delete"
+      become:          true
+
+    - name:         Copy script
+      copy:
+       src:         "files/{{ item }}"
+       dest:        "/home/svc_aiautomate/{{ item }}"
+       mode:        '0755'
+       owner:       svc_aiautomate
+      with_items:
+         - compare_size_html.sh
+
+
+    - name:            Check hostname
+      shell:           "hostname"
+      register:        myhostname
+      become:          true
+
+    - debug:            msg="{{ myhostname.stdout}}"
+
+    - name:            Check postgres DB backups
+      shell:           "/home/svc_aiautomate/compare_size_html.sh {{ item.path }} {{ item.folder }} {{ item.name }}"
+      register:        backup_saphir_mbk
+      become:          true
+      with_items:
+          - { path: "{{saphir_backup_dir}}", folder: saphir_dev, name: "Saphir_DEV_MBK_DB_on_{{myhostname.stdout}}" }
+          - { path: "{{saphir_backup_dir}}", folder: esb_dev, name: "ESB_DEV_MBK_DB_on_{{ myhostname.stdout }}" }
+          - { path: "{{saphir_backup_dir}}", folder: saphir_dev2, name: "Saphir_DEV2_MBK_DB_on_{{ myhostname.stdout }}" }
+          - { path: "{{saphir_backup_dir}}", folder: esb_dev2, name: "ESB_DEV2_MBK_DB_on_{{ myhostname.stdout }}" }
+
+
+    - debug:            msg="{{  item.output}}"
+      with_items:       "{{ backup_saphir_mbk.results | json_query('[].{output: stdout_lines}')}}"
+
+    # - name:            Check fastpayment DB backups
+    #   shell:           "/home/svc_aiautomate/compare_size_html_1.sh {{ item.path }} {{ item.folder }} {{ item.name }}"
+    #   register:        backup_fast_mbk
+    #   become:          true
+    #   with_items:
+    #       - { path: "{{saphir_backup_dir}}", folder: fastpayment_prd, name: "FAST_MBK_DB" }
+
+
+    # - debug:            msg="{{  item.output}}"
+    #   with_items:       "{{ backup_fast_mbk.results | json_query('[].{output: stdout_lines}')}}"
+
+    - name:                      Transfer log To Jenkins
+      become_user: svc_aiautomate
+      shell: rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/tmp/daily_check_*.log  /home/svc_aiautomate/
+      delegate_to:   "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+- hosts:                mbkbkksphdbu01.bred-it.local
+  vars:
+    saphir_backup_dir:  '/backup_non_prd/{{ myhostname.stdout }}'
+
+  gather_facts:         no
+  tasks:
+    - name:            Remove old trace file first
+      shell:           "find /tmp -type f -name 'daily_check_*.log' -delete"
+      become:          true
+
+    - name:         Copy script
+      copy:
+       src:         "files/{{ item }}"
+       dest:        "/home/svc_aiautomate/{{ item }}"
+       mode:        '0755'
+       owner:       svc_aiautomate
+      with_items:
+         - compare_size_html.sh
+
+
+    - name:            Check hostname
+      shell:           "hostname"
+      register:        myhostname
+      become:          true
+
+    - debug:            msg="{{ myhostname.stdout}}"
+
+    - name:            Check postgres DB backups
+      shell:           "/home/svc_aiautomate/compare_size_html.sh {{ item.path }} {{ item.folder }} {{ item.name }}"
+      register:        backup_saphir_mbk2
+      become:          true
+      with_items:
+          - { path: "{{saphir_backup_dir}}", folder: saphir_uat, name: "Saphir_UAT_MBK_DB_on_{{ myhostname.stdout }}" }
+          - { path: "{{saphir_backup_dir}}", folder: esb_uat, name: "ESB_UAT_MBK_DB_on_{{ myhostname.stdout }}" }
+
+
+    - debug:            msg="{{  item.output}}"
+      with_items:       "{{ backup_saphir_mbk2.results | json_query('[].{output: stdout_lines}')}}"
+
+    - name:                      Transfer log To Jenkins
+      become_user: svc_aiautomate
+      shell: rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/tmp/daily_check_*.log  /home/svc_aiautomate/
+      delegate_to:   "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+
+- hosts:                spsphdbvlcatd1.bvl-prod.ad.production.local
+  vars:
+    saphir_backup_dir:  '/backup_non_prd/{{ myhostname.stdout }}'
+
+  gather_facts:         no
+  tasks:
+    - name:            Remove old trace file first
+      shell:           "find /tmp -type f -name 'daily_check_*.log' -delete"
+      become:          true
+
+    - name:         Copy script
+      copy:
+       src:         "files/{{ item }}"
+       dest:        "/home/svc_aiautomate/{{ item }}"
+       mode:        '0755'
+       owner:       svc_aiautomate
+      with_items:
+         - compare_size_html.sh
+
+
+    - name:            Check hostname
+      shell:           "hostname"
+      register:        myhostname
+      become:          true
+
+    - debug:            msg="{{ myhostname.stdout}}"
+
+    - name:            Check postgres DB backups
+      shell:           "/home/svc_aiautomate/compare_size_html.sh {{ item.path }} {{ item.folder }} {{ item.name }}"
+      register:        backup_saphir_bvl
+      become:          true
+      with_items:
+          - { path: "{{saphir_backup_dir}}", folder: saphir_dev, name: "Saphir_DEV_BVL_DB_on_{{ myhostname.stdout }}" }
+          - { path: "{{saphir_backup_dir}}", folder: esb_dev, name: "ESB_DEV_BVL_DB_on_{{ myhostname.stdout }}" }
+
+
+    - debug:            msg="{{  item.output}}"
+      with_items:       "{{ backup_saphir_bvl.results | json_query('[].{output: stdout_lines}')}}"
+
+    - name:                      Transfer log To Jenkins
+      become_user: svc_aiautomate
+      shell: rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/tmp/daily_check_*.log  /home/svc_aiautomate/
+      delegate_to:   "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+
+- hosts:                spsphdbvlcatu1.bvl-prod.ad.production.local
+  vars:
+    saphir_backup_dir:  '/backup_non_prd/{{ myhostname.stdout }}'
+
+  gather_facts:         no
+  tasks:
+    - name:            Remove old trace file first
+      shell:           "find /tmp -type f -name 'daily_check_*.log' -delete"
+      become:          true
+
+    - name:         Copy script
+      copy:
+       src:         "files/{{ item }}"
+       dest:        "/home/svc_aiautomate/{{ item }}"
+       mode:        '0755'
+       owner:       svc_aiautomate
+      with_items:
+         - compare_size_html.sh
+
+
+    - name:            Check hostname
+      shell:           "hostname"
+      register:        myhostname
+      become:          true
+
+    - debug:            msg="{{ myhostname.stdout}}"
+
+    - name:            Check postgres DB backups
+      shell:           "/home/svc_aiautomate/compare_size_html.sh {{ item.path }} {{ item.folder }} {{ item.name }}"
+      register:        backup_saphir_bvl2
+      become:          true
+      with_items:
+          - { path: "{{saphir_backup_dir}}", folder: saphir_uat, name: "Saphir_UAT_BVL_DB_on_{{ myhostname.stdout }}" }
+          - { path: "{{saphir_backup_dir}}", folder: esb_uat, name: "ESB_UAT_BVL_DB_on_{{ myhostname.stdout }}" }
+
+
+    - debug:            msg="{{  item.output}}"
+      with_items:       "{{ backup_saphir_bvl2.results | json_query('[].{output: stdout_lines}')}}"
+
+    - name:                      Transfer log To Jenkins
+      become_user: svc_aiautomate
+      shell: rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/tmp/daily_check_*.log  /home/svc_aiautomate/
+      delegate_to:   "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"

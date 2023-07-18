@@ -1,0 +1,115 @@
+---
+- name:                      Print ENV USER
+  become_user:               oracle
+  shell:                     |
+          #!bin/bash
+          source /home/oracle/.bash_profile
+          export ORACLE_SID={{sid}}
+          echo "ORACLE_BASE=$ORACLE_BASE"
+          echo "ORACLE_HOME=$ORACLE_HOME"
+          echo "PATH=$PATH"
+  register:                  oracle_profile
+
+
+- name:                      Set fact
+  set_fact:
+    work_dir:                '/home/oracle/Scripts/bin'
+    # lastname_up:             "{{ lastname | upper }}"
+    PATH:             "{{ oracle_profile.stdout | regex_findall('PATH=(.+)') | first | regex_replace('\\s', '') }}"
+    ORACLE_BASE:             "{{ oracle_profile.stdout | regex_findall('ORACLE_BASE=(.+)') | first | regex_replace('\\s', '') }}"
+    ORACLE_HOME:             "{{ oracle_profile.stdout | regex_findall('ORACLE_HOME=(.+)') | first | regex_replace('\\s', '')}}"
+    ORACLE_SID:              "{{sid}}"
+    # user_mail:               "{{Email}}"
+
+- name:                 Check STATUS Oracle DB
+  become_user:          "oracle"
+  shell:                |
+         export ORACLE_HOME={{ORACLE_HOME}}
+         COMMAND_SQL=`{{ORACLE_HOME}}/bin/sqlplus -s / as sysdba <<-EOF
+                  SET HEADING OFF;
+                  SELECT DATABASE_STATUS  FROM V\\$INSTANCE;
+                  EXIT;
+                  EOF`
+         echo $COMMAND_SQL
+  environment:
+     ORACLE_HOME:       "{{ORACLE_HOME}}"
+     ORACLE_BASE:       "{{ORACLE_BASE}}"
+     PATH:              "{{PATH}}"
+     ORACLE_SID:        "{{ORACLE_SID}}"
+  register:             oracle_status
+
+- name:                      Validate DATABASE_STATUS
+  assert:
+    that:                    "'ACTIVE' in oracle_status.stdout_lines"
+    success_msg:             "DB ACTIVE!!!"
+    fail_msg:                "Please contact DBA to check DATABASE_STATUS : [{{oracle_status.stdout}}]"
+
+- name:                      Run script check table exising
+  shell:                     |
+                             source /home/oracle/.bash_profile > /dev/null
+                             export ORACLE_SID={{ORACLE_SID}}
+                             {{ORACLE_HOME}}/bin/sqlplus -s '/  as sysdba ' << EOF
+                             set heading off;
+                             set feedback off;
+                             set echo off;
+                             select count(*) from dba_tables where table_name = '{{ TABLE_NAME | upper }}';
+                             exit
+                             EOF
+  environment:
+       ORACLE_BASE:          "{{ORACLE_BASE}}"
+       ORACLE_HOME:          "{{ORACLE_HOME}}"
+  become_user:               oracle
+  register:                  check_table
+
+- name: set var
+  set_fact:
+    chk_table: "{{check_table.stdout | trim}}"
+
+# - debug:
+#     msg: "{{chk_table}}"
+
+- fail:
+    msg: Unable to find specific table {{TABLE_NAME}}
+  when: chk_table == "0"
+
+- name:                                    Change path Permission to oracle
+  file:
+   path:                                   "/Automate/Scripts"
+   state:                                  directory
+   owner:                                  oracle
+   group:                                  oracle
+
+- name: copy template
+  become_user: oracle
+  template:
+    src: gather_stat.sql.j2
+    dest: /Automate/Scripts/gather_stat.sql
+    mode:  '0755'
+  when: chk_table != "0"
+
+- name: run gather fact script
+  shell:                     |
+                             source /home/oracle/.bash_profile > /dev/null
+                             export ORACLE_SID={{ORACLE_SID}}
+                             {{ORACLE_HOME}}/bin/sqlplus -s '/  as sysdba ' << EOF
+                             set heading off;
+                             set feedback off;
+                             set echo off;
+                             @/Automate/Scripts/gather_stat.sql
+                             exit
+                             EOF
+  environment:
+       ORACLE_BASE:          "{{ORACLE_BASE}}"
+       ORACLE_HOME:          "{{ORACLE_HOME}}"
+  become_user:               oracle
+  when: chk_table != "0"
+  register: gatherstat_output
+
+- name: result
+  assert:
+    that:
+    - (gatherstat_output.stdout is not search("(ORA|SP2)-[0-9]+:|(^ERROR)"))
+    - (gatherstat_output.stderr is not search("(ORA|SP2)-[0-9]+:|(^ERROR)"))
+    fail_msg:           "Gather Stat Run Fail !!!"
+    success_msg:        "Gather Stat Run Success!!!"
+  when: chk_table != "0"

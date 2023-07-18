@@ -1,0 +1,54 @@
+#!/bin/bash
+
+. /home/oracle/.bash_profile >> /dev/null
+
+export ORACLE_SID=$1
+
+export bckuser=bckuser${ORACLE_SID}
+export bckpass=bckpass${ORACLE_SID}
+
+$ORACLE_HOME/bin/sqlplus -s "/as sysdba"  <<-EOF
+alter session set current_schema={{Owner}} ;
+
+select directory_path "Debug Directory Path"
+from sys.dba_directories
+where directory_name=
+(select param_val from cstb_param where param_name='WORK_AREA');
+EOF
+
+$ORACLE_HOME/bin/sqlplus -s "/as sysdba"  <<-EOF
+WHENEVER OSERROR EXIT 1;
+WHENEVER SQLERROR EXIT 1;
+alter session set current_schema={{Owner}} ;
+col PARAM_NAME format a15
+col PARAM_VAL format a20
+
+select PARAM_NAME,PARAM_VAL from cstb_param where param_name = 'REAL_DEBUG' ;
+
+EOF
+
+CNT=`$ORACLE_HOME/bin/sqlplus -s "/as sysdba"  <<-EOF
+WHENEVER OSERROR EXIT 1;
+WHENEVER SQLERROR EXIT 1;
+alter session set current_schema={{Owner}} ;
+set heading off
+col PARAM_NAME format a15
+col PARAM_VAL format a20
+select count(*) from cstb_debug_users  where debug='Y';
+EOF
+`
+# echo $CNT
+
+if [ "$CNT" != "0" ];then
+$ORACLE_HOME/bin/sqlplus -s "/as sysdba"  <<-EOF
+WHENEVER OSERROR EXIT 1;
+WHENEVER SQLERROR EXIT 1;
+alter session set current_schema={{Owner}} ;
+set pagesize 50
+col PARAM_NAME format a15
+col PARAM_VAL format a20
+select user_id,user_name from smtb_user where user_id in (select distinct user_id from cstb_debug_users  where debug='Y');
+EOF
+else
+echo "All debug users are disabled"
+fi

@@ -1,0 +1,161 @@
+<VirtualHost *:8443>
+#Template for connect.*
+#
+ServerName {{ BF_NAME }}
+
+
+#Serve /.well-known from local directory  by make exception rule from  F5 backend proxy
+#The ! directive is useful in situations where you don't want to reverse-proxy a subdirectory
+#This exception must be at the top before  ProxyPass "/" ...
+#
+ProxyPass "/.well-known" "!"
+ProxyPass "/.error" "!"
+Alias /.well-known /var/www/html/.well-known
+Alias /.error /var/www/html/error
+
+#Test/Enable to allow only specific IP to access and others will see MA page
+#RewriteEngine   On
+#RewriteCond %{REMOTE_ADDR} !=58.137.173.73
+#RewriteCond  expr "! -R '183.0.0.0/8'"
+#RewriteCond %{REQUEST_URI} !/.error/error-502.html$ [NC]
+#RewriteRule .* /.error/error-502.html [R=302,L]
+
+{% if Whitelist == "Enable" %}
+#for BRED IT IP
+#RewriteCond %{REMOTE_ADDR} !=58.137.173.73
+  {% set list1 = WhitelistIP.split(',') %}
+    {% for item in list1 %}
+RewriteCond %{REMOTE_ADDR} !={{ item }}
+    {% endfor %}
+{% endif %}
+
+#BANKFLEX MA Page
+#RewriteEngine   On
+#RewriteCond %{REQUEST_URI} !/.error/error-502.html$ [NC]
+#RewriteRule .* /.error/error-502.html [PT]
+
+
+
+<Location /CIB >
+  <IfModule mod_security2.c>
+    #sql inject
+        SecRuleRemoveById 950901
+        #hello
+        SecRuleRemoveById 960914
+        SecRuleRemoveById 200002
+        #missing UA header
+        SecRuleRemoveById 960009
+        #id "960904"] [rev "2"] [msg "Request Containing Content, but Missing Content-Type header"]
+        SecRuleRemoveById 960904
+        SecRuleRemoveById 973310
+        SecRuleRemoveById 200004
+    </IfModule>
+
+</Location>
+
+<Location /cmb >
+  <IfModule mod_security2.c>
+    #sql inject
+	SecRuleRemoveById 981246
+        SecRuleRemoveById 950901
+	#hello
+        SecRuleRemoveById 960914
+        SecRuleRemoveById 200002
+	#missing UA header
+        SecRuleRemoveById 960009
+	SecRuleRemoveById 950006
+	SecRuleRemoveById 973310
+	SecRuleRemoveById 981248
+	SecRuleRemoveById 981317
+	SecRuleRemoveById 981252
+	SecRuleRemoveById 959070
+	SecRuleRemoveById 973302
+	SecRuleRemoveById 200005
+	SecRuleRemoveById 981245
+	SecRuleRemoveById 973334
+	SecRuleRemoveById 960010 
+    </IfModule>
+
+</Location>
+
+#{% if Whitelist == "Enable" %}
+##for BRED IT IP
+##RewriteCond %{REMOTE_ADDR} !=58.137.173.73
+#  {% set list1 = WhitelistIP.split(',') %}
+#    {% for item in list1 %}
+##RewriteCond %{REMOTE_ADDR} != {{ item }}
+#    {% endfor %}
+#{% endif %}
+
+<Directory "/var/www/html/>
+    Options -Indexes +FollowSymLinks
+    AllowOverride None
+    Require all granted
+</Directory>
+
+
+        #RemoteIPHeader X-Real-IP
+        #RemoteIPHeader X-Forwarded-For
+        #RemoteIPInternalProxy 10.11.14.3
+        #RemoteIPInternalProxy 127.0.0.1/32
+        ProxyPreserveHost On
+        ProxyRequests Off
+        ProxyVia Off
+        ProxyErrorOverride  On 500 502
+
+        {% if Environment == "DEV" %}
+        ProxyPass "/" "https://10.26.138.20/" retry=0 disablereuse=on timeout=120
+        ProxyPassReverse "/" "https://10.26.138.20/"
+        {% endif %}
+
+        {% if Environment == "UAT" %}
+        ProxyPass "/" "https://10.26.138.20/" retry=0 disablereuse=on timeout=120
+        ProxyPassReverse "/" "https://10.26.138.20/"
+        {% endif %}
+
+        {% if Environment == "PRD" %}
+        ProxyPass "/" "https://10.25.9.20/" retry=0 disablereuse=on timeout=120
+        ProxyPassReverse "/" "https://10.25.9.20/"
+        {% endif %}
+
+  SSLProxyEngine On
+  SSLProxyVerify none
+  SSLProxyCheckPeerCN off
+  SSLProxyCheckPeerName off
+  SSLProxyCheckPeerExpire off
+
+  SSLEngine on
+
+{% if Environment == "DEV" %}
+  SSLCertificateFile /etc/ssl/cert/spwafzmbkcatu1.bred-it-prod.ad.production.local.crt
+  SSLCertificateKeyFile /etc/ssl/private/spwafzmbkcatu1.bred-it-prod.ad.production.local.pem
+{% endif %}
+
+{% if Environment == "UAT" %}
+  SSLCertificateFile /etc/ssl/cert/spwafzmbkcatu1.bred-it-prod.ad.production.local.crt
+  SSLCertificateKeyFile /etc/ssl/private/spwafzmbkcatu1.bred-it-prod.ad.production.local.pem
+{% endif %}
+
+{% if Environment == "PRD" %}
+  SSLCertificateFile /etc/ssl/cert/spwafzmbkcslp1.bred-it-prod.ad.production.local.crt
+  SSLCertificateKeyFile /etc/ssl/private/spwafzmbkcslp1.bred-it-prod.ad.production.local.pem
+{% endif %}
+
+#### Error Logs
+#  ErrorLogFormat "[%{uc}t] [%-m:%-l] [R:%L] [C:%{C}L] %7F: %E: %M"
+#  ErrorLogFormat request "[%{uc}t] [R:%L] Request %k on C:%{c}L pid:%P tid:%T"
+#  ErrorLogFormat request "[%{uc}t] [R:%L] UA:'%+{User-Agent}i'"
+#  ErrorLogFormat request "[%{uc}t] [R:%L] Referer:'%+{Referer}i'"
+#  ErrorLogFormat connection "[%{uc}t] [C:%{c}L] local\ %a remote\ %A"
+  ErrorLog "logs/connect_ssl_error_log"
+
+LogFormat "%{remoteip-proxy-ip-list}n (%{X-Forwarded-For}i) %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-agent}i\"" combined_with_forwarded_for
+CustomLog /var/log/httpd/connect.access.log combined_with_forwarded_for
+
+
+#ErrorDocument 502 "Sorry, website is being updated"
+ErrorDocument 502 /.error/error-502.html
+ErrorDocument 503 /.error/error-502.html
+#ErrorDocument 403 https://bredcambodia.com/.error/error-502.html
+
+</VirtualHost>

@@ -1,0 +1,10 @@
+---
+# Cleanup
+- name: cleanup_env
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - "{{ UPLOAD_PATH }}/SQLFILE"
+    - "{{ UPLOAD_PATH }}/{{ FILE_NAME }}"
+    - "{{ UPLOAD_PATH }}/repo"

@@ -1,0 +1,94 @@
+- hosts:                spjenkabitcslp1.bred-it-prod.ad.production.local
+  vars:
+    tmp_dir:            '/tmp'
+    date:               "{{ lookup('pipe', 'date +%Y%m%d') }}"
+  gather_facts:         no
+  tasks:
+    - name:             Remove old trace file from other server
+      shell:            find /home/svc_aiautomate/ -type f -name "daily_check_{{ item }}*.log" -mmin +240 -delete
+      with_items:
+         - MBKBKKSPHDBD01
+         - MBKBKKSPHDBU01
+         - spsphdbvlcatd1
+         - spsphdbvlcatu1
+      become:           true
+    
+    - name:             Remove old trace file first
+      shell:            "find /home/svc_aiautomate/ -type f -name devuat_summary_daily_check-*.txt -delete"
+      become:           true
+    
+    # - name:             Remove old trace file first from dwh
+    #   shell:            find /home/svc_aiautomate/ -type f -name "*_dwh_result_*.txt" -mtime +1 -delete
+    #   become:           true
+
+    # - name:         Copy script
+    #   copy:
+    #    src:         "files/{{ item }}"
+    #    dest:        "/home/svc_aiautomate/{{ item }}"
+    #    mode:        '0755'
+    #    owner:       svc_aiautomate
+    #   with_items:
+    #      - git_status.sh
+    #      - get_dwh_report.sh
+    #      - get_edm_report.sh
+    #      - edmGetFiles.sh
+    #      - compare_statement.sh
+
+    - name:             Summarize logs
+      shell:            cat /home/svc_aiautomate/daily_check_{{ item }}*.log >> /home/svc_aiautomate/devuat_summary_daily_check-{{ date }}.txt
+      with_items:
+         - MBKBKKSPHDBD01
+         - MBKBKKSPHDBU01
+         - spsphdbvlcatd1
+         - spsphdbvlcatu1
+      register:         summary_log
+
+
+    - name:             Check summary_daily_check-{{ date }}.txt file
+      stat:
+        path:           '/home/svc_aiautomate/devuat_summary_daily_check-{{ date }}.txt'
+      register:         summaryfile
+
+  
+    - name:             Set content mail
+      shell:            "cat /home/svc_aiautomate/devuat_summary_daily_check-{{ date }}.txt"
+      register:         summary
+      when:
+        - summaryfile.stat.exists == true
+
+### Ticket ID: Ticket#2023051010000179 ###
+
+    # - name:             Add line format for RMAN
+    #   lineinfile:
+    #      path:          '/home/svc_aiautomate/summary_daily_check-{{ date }}.txt'
+    #      insertafter:   '^(.*)ESB_UAT_BVL_DB_on_spsphdbvlcatu1(.*)$'
+    #      firstmatch:    yes
+    #      line:          '<p><span style="font-size:14px"><b>---------  Checkpoint # RMAN Backup #  ----</b></span></br>'
+    #      state:         present
+    #   when:
+    #     - summaryfile.stat.exists == true
+
+### ### ###
+
+    - debug:            msg="{{ summary.stdout_lines }}"
+
+    - name:             Send mail to GOC
+      shell:            |
+               EMAIL="applications.integration@bred-it.com"
+               SUBJECT="[DEV][UAT][AI Daily Check] AI Daily Check Report on {{ date }}"
+               BODY='
+               <span style="font-size:12px;"><span style="font-family:arial,helvetica,sans-serif;">
+               <p>Hi Team,</br>
+               <p><span style="font-size:16px"><b> AI Daily Check Report on <span style="color:#3633FF"> {{date}} </b></span> </span><br />
+
+               <!-- <p><span style="font-size:14px"><b>--- Checkpoint 1 Summary Daily Check Website and DB backup (Don’t call standby and can check on working hours.) --- </b></span></br> -->
+               {{ summary.stdout }}
+               <p>If have NOK status on results, Please contact AI check on details.</br>
+               <p>From</br>
+               <p>AI Automate</br>
+               </span></span>
+               '
+               echo "$BODY" | mutt -e "my_hdr From: Automate AI Daily check by Jenkins <applications.integration@bred-it.com>" -e "set content_type=text/html" -s "$SUBJECT" -- $EMAIL
+#      delegate_to:     "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+      ignore_errors:    true
+#              If NOK on results,Please contact AI check on details."

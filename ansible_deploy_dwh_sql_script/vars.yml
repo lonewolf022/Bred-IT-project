@@ -1,0 +1,9 @@
+
+# Server name that revice value from Jenkins
+SERVER: "{{ dwh_servername }}"
+
+# GitLab server URL
+GITLAB_SERVER: "spjenkabitcslp1.bred-it-prod.ad.production.local"
+
+# Upload file name
+FILE_NAME: "{{ FileName }}"

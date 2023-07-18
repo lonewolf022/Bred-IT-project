@@ -1,0 +1,29 @@
+---
+-  hosts: "{{ SERVERS }}"
+   become: True
+   strategy: mitogen_linear
+   vars_files:
+     - vars.yml
+     - svc_aiautomate_secrets.yml
+
+   pre_tasks:
+   - name: Get Parameter
+     uri:
+        url: "{{ satellite_url }}/api/v2/hosts/{{ hostname_inv  | lower  }}/parameters/"
+        user: svc_aiautomate
+        password: "{{ svc_aiautomate_pass }}"
+        method: GET
+        force_basic_auth: yes
+        body_format: json
+        status_code: 200
+        validate_certs: false
+     delegate_to: localhost
+     register: parameters_app_version
+     
+   - set_fact:
+        BF_NAME: "{{ BankFlexConnect }}"
+        jenkins_application: "{{ parameters_app_version.json | json_query ('results[? name==`jenkins_application`].value') | join(', ') }}"
+
+   roles:
+     - { role: disable, when: 'Task == "Disable"' }
+     - { role: enable, when: 'Task == "Enable"' }

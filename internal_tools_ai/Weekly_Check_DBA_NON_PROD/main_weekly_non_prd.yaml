@@ -1,0 +1,5 @@
+---
+- name: For weekly check Oracle RMAN on non prodution env
+  import_playbook: Weekly_Check_Oracle_rman_non_prd.yaml
+
+- import_playbook: summary_result_weekly_non_prd.yaml

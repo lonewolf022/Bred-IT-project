@@ -1,0 +1,203 @@
+---
+- name:                      Print ENV USER
+  become_user:               oracle
+  shell:                     |
+          #!bin/bash
+          source /home/oracle/.bash_profile
+          export ORACLE_SID={{sid}}
+          echo "ORACLE_BASE=$ORACLE_BASE"
+          echo "ORACLE_HOME=$ORACLE_HOME"
+          echo "PATH=$PATH"
+  register:                  oracle_profile
+
+
+- name:                      Set fact
+  set_fact:
+    work_dir:                '/home/oracle/Scripts/bin'
+    # lastname_up:             "{{ lastname | upper }}"
+    PATH:             "{{ oracle_profile.stdout | regex_findall('PATH=(.+)') | first | regex_replace('\\s', '') }}"
+    ORACLE_BASE:             "{{ oracle_profile.stdout | regex_findall('ORACLE_BASE=(.+)') | first | regex_replace('\\s', '') }}"
+    ORACLE_HOME:             "{{ oracle_profile.stdout | regex_findall('ORACLE_HOME=(.+)') | first | regex_replace('\\s', '')}}"
+    ORACLE_SID:              "{{sid}}"
+    # user_mail:               "{{Email}}"
+
+
+- name:                      Set password
+  set_fact:
+    password:                "{{ oracle_password | pass_gen(pass_length=16 ,special_chars='#_') }}"
+  when:
+    - passwd == "nopass"
+
+- name:                      Set password
+  set_fact:
+    password:                "{{ passwd |trim}}"
+  when:
+    - passwd != "nopass"
+
+# - name:                      Set email for {{ user }} AI/DBA team
+#   set_fact:
+#     user_mail:               "{{ lastname | lower + '.' + firstname | lower + '@bred-it.com'}}"
+#   when:
+#     - lastname_up != lastname
+
+# - name:                      Set email for {{ user }}
+#   set_fact:
+#     user_mail:               "{{ firstname | lower + '.' + lastname | lower + '@bred-it.com'}}"
+#   when:
+#     - lastname_up == lastname
+
+# - debug:
+#     msg:   "Email User:      {{ user_mail }}"
+#   when:                      user != ""
+#
+
+# - name:                      Copy run script
+#   copy:
+#     src:                     "{{ role_path }}/files/{{ item }}"
+#     dest:                    "{{ work_dir }}/"
+#     mode:                    0755
+#     owner:                   oracle
+#     group:                   oracle
+#   become:                    True
+#   with_items:
+#     - reset_pw_fcc_db.sh
+    #echo 'ALTER USER {{ user }} IDENTIFIED BY {{ password }} ACCOUNT UNLOCK;' | {{ORACLE_HOME}}/bin/sqlplus -s "/as sysdba" | grep "^ORA-"
+#                             {{ work_dir }}/reset_pw_fcc_db.sh {{ ORACLE_SID }} {{ user }}
+
+- name:                 Check STATUS Oracle DB
+  become_user:          "oracle"
+  shell:                |
+         export ORACLE_HOME={{ORACLE_HOME}}
+         COMMAND_SQL=`{{ORACLE_HOME}}/bin/sqlplus -s / as sysdba <<-EOF
+                  SET HEADING OFF;
+                  SELECT DATABASE_STATUS  FROM V\\$INSTANCE;
+                  EXIT;
+                  EOF`
+         echo $COMMAND_SQL
+  environment:
+     ORACLE_HOME:       "{{ORACLE_HOME}}"
+     ORACLE_BASE:       "{{ORACLE_BASE}}"
+     PATH:              "{{PATH}}"
+     ORACLE_SID:        "{{ORACLE_SID}}"
+  register:             oracle_status
+
+- name:                      Validate DATABASE_STATUS
+  assert:
+    that:                    "'ACTIVE' in oracle_status.stdout_lines"
+    success_msg:             "DB ACTIVE!!!"
+    fail_msg:                "Please contact DBA to check DATABASE_STATUS : [{{oracle_status.stdout}}]"
+
+- name:                      Run script check user exising
+  shell:                     |
+                             source /home/oracle/.bash_profile > /dev/null
+                             export ORACLE_SID={{ORACLE_SID}}
+                             {{ORACLE_HOME}}/bin/sqlplus -s '/  as sysdba ' << EOF
+                             set heading off;
+                             set feedback off;
+                             set echo off;
+                             select count(*) from dba_users where username = '{{ user }}';
+                             exit
+                             EOF
+  environment:
+       ORACLE_BASE:          "{{ORACLE_BASE}}"
+       ORACLE_HOME:          "{{ORACLE_HOME}}"
+  become_user:               oracle
+  register:                  check_user
+
+- name: set var
+  set_fact:
+    chk_user: "{{check_user.stdout | trim}}"
+
+- name:                      Run script Create New User
+  shell:                     |
+                             source /home/oracle/.bash_profile > /dev/null
+                             export ORACLE_SID={{ORACLE_SID}}
+                             echo "Creating user {{ user }}  ... "
+                             {{ORACLE_HOME}}/bin/sqlplus -s '/  as sysdba ' << EOF
+                             set verify off
+                             set echo off
+                             create user {{ user }} identified by "{{ password }}" account unlock;
+                             grant {{ Role }} to {{ user }};
+                             ALTER USER {{user}} DEFAULT ROLE ALL;
+                             ALTER user {{user}} profile {{Profile}};
+                             exit
+                             EOF
+  environment:
+       ORACLE_BASE:          "{{ORACLE_BASE}}"
+       ORACLE_HOME:          "{{ORACLE_HOME}}"
+  become_user:               oracle
+  register:                  script_result_create
+  when: chk_user == "0"
+
+- name:                      Run script Alter User
+  shell:                     |
+                             source /home/oracle/.bash_profile > /dev/null
+                             export ORACLE_SID={{ORACLE_SID}}
+                             echo "Alter user {{ user }}  ... "
+                             {{ORACLE_HOME}}/bin/sqlplus -s '/  as sysdba ' << EOF
+                             set verify off
+                             set echo off
+                             alter user {{ user }} identified by "{{ password }}" account unlock;
+                             grant {{ Role }} to {{ user }};
+                             ALTER USER {{user}} DEFAULT ROLE ALL;
+                             ALTER user {{user}} profile {{Profile}};
+                             exit
+                             EOF
+  environment:
+       ORACLE_BASE:          "{{ORACLE_BASE}}"
+       ORACLE_HOME:          "{{ORACLE_HOME}}"
+  become_user:               oracle
+  register:                  script_result_alter
+  when: chk_user != "0"
+
+- name:                      Validate User create process
+  assert:
+    that:                    (script_result_create.stdout is not search("(ORA|SP2)-[0-9]+:|(^ERROR)"))
+    fail_msg:                "Please contact DBA to check ERROR. {{script_result_create.stdout}}"
+    success_msg:             "User Create Success!!!"
+  when: chk_user == "0"
+
+- name:                      Validate User alter process
+  assert:
+    that:                    (script_result_alter.stdout is not search("(ORA|SP2)-[0-9]+:|(^ERROR)"))
+    fail_msg:                "Please contact DBA to check ERROR. {{script_result_alter.stdout}}"
+    success_msg:             "User Alter Success!!!"
+  when: chk_user != "0"
+
+- name:                      GET CODE APP NAME
+  shell:                     echo "{{jenkins_application}}" | awk -F '_' '{print $1}'
+  register:                  CODE_NAME
+
+- name:                      DEFINE CODE NAME
+  set_fact:
+    CODENAME:                "{{CODE_NAME.stdout | upper}}"
+
+- debug:
+    msg:
+      - "CODE NAME:         {{CODENAME}}"
+      - "ORACLE SID:        {{ORACLE_SID}}"
+      - "user:              {{ user }}"
+      - "password:          {{ password }}"
+
+
+# - name:                      Send mail to {{ user }} For {{CODENAME}} DB
+#   shell:                     |
+#        SUBJECT="[{{CODENAME}}][{{bank}}] [{{branch}}] Reset Password database User {{ user }}  by Jenkins "
+#        BODY='
+#        <p><span style="font-size:12px"><span style="font-family:arial,helvetica,sans-serif"><strong>Reset Password database User for {{ user }} </strong></span></span></p>
+#        <p><span style="font-size:12px"><span style="font-family:arial,helvetica,sans-serif"><strong>Please keep password as below details </strong></span></span></p>
+#        <p><span style="font-size:12px"><span style="font-family:arial,helvetica,sans-serif"><strong><strong>---&nbsp;Display User and New password&nbsp;---<br />
+#        <strong>SERVER&nbsp;:&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</strong><span style="color:#162aea">{{ server }} </span><br />
+#        <strong>BANK&nbsp;:&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</strong><span style="color:#162aea">{{ bank }} </span><br />
+#        <strong>BRANCH&nbsp;:&nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp;</strong><span style="color:#162aea">{{ branch }} </span><br />
+#        <strong>USER&nbsp;:&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;&nbsp;</strong><span style="color:#162aea">{{ user }} </span><br />
+#        <strong>New Password&nbsp;:&nbsp;</strong><span style="color:#162aea">{{ password }} </span></strong></strong></span></span></p>
+#        <p><span style="font-size:12px"><span style="font-family:arial,helvetica,sans-serif"><strong><strong><strong>---&nbsp;Reset by&nbsp;---<br />
+#        <strong>{{ BUILD_USER }} </strong></strong></strong></strong></span></span></p>
+#        '
+#        echo "$BODY" | mutt -e "my_hdr From: Reset Password  database User by Jenkins <applications.integration@bred-it.com>" -e "set content_type=text/html" -s "$SUBJECT"  -- "{{ user_mail }}"
+#   delegate_to:               "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+#   ignore_errors:             true
+#   when:
+#     - script_result.stdout != ""
+#     - '"ERROR" not in script_result.stdout'

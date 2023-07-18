@@ -1,0 +1,146 @@
+---
+- name:                                "Read Database Environment"
+  include_tasks:                       "profile/oracle_env.yml"
+#
+- name:                                Get Time End
+  command:                             "date '+%Y%m%d_%H%M'"
+  register:                            GET_DATE
+  environment:
+    TZ:                                Asia/Bangkok
+
+- name:                                Define Variable TIME
+  set_fact:
+    DATE:                          "{{GET_DATE.stdout}}"
+
+- name:                                Set fact
+  set_fact:
+    work_dir:                          '/home/oracle/Scripts/bin'
+    spool_dir:                         '/spools'
+    workspace:                         '/var/lib/jenkins/workspace/{{ job }}'
+    spool_file:                        'longrunning_{{sid}}_{{DATE}}.spl'
+- name:                                Create  directory
+  become:                              yes
+  file:
+   state:                              directory
+   path:                               "{{item}}"
+   owner:                              "oracle"
+   group:                              "oracle"
+   mode:                               "0755"
+   recurse:                            yes
+  with_items:
+    - "{{spool_dir}}"
+
+# - name:                              check script directory.
+#   stat:
+#    path:                             "{{ spool_dir }}"
+#   register:                          spools_folder
+#
+# - fail:
+#     msg:                             "Please Check spool path on DB!! "
+#   when:                              spools_folder.stat.exists == false
+#
+
+- name:                                Copy run script
+  copy:
+    src:                               "{{ role_path }}/files/{{ item }}"
+    dest:                              "{{ work_dir }}/"
+    mode:                              0755
+    owner:                             oracle
+    group:                             oracle
+  become:                              True
+  with_items:
+    - long_running.sh
+    - long_running_html.sh
+
+- name:                                Get DATE
+  shell:                               |
+                      TODAY="`date +'%Y%m%d %H:%M:%S'`"
+                      echo $TODAY
+  register:                            query_date
+
+- name:                                Run script {{ script }}
+  command:                             "{{ work_dir }}/long_running.sh {{ sid }} {{DATE}}"
+  become:                              True
+  become_user:                         oracle
+  register:                            script_result
+#
+- name:                                Run script {{ script }} html
+  shell:                               |
+                                        {{ work_dir }}/long_running_html.sh {{ sid }} {{DATE}} | awk '{print "<p>"$0"</p>"}'
+  become:                              True
+  become_user:                         oracle
+  register:                            script_result_html
+
+# - name:                              Verify spool file
+#   shell:                             "ls -trl {{ spool_dir }}/ | grep longrunning_ | grep [s][p][l] | tail -n 1 | awk '{print $NF}'"
+#   register:                          spool_file
+#   when:
+#     - script_result.rc == 0
+#     - (script_result.stdout is not search("(ORA|SP2)-[0-9]+:|(^ERROR)"))
+#
+# #
+- name:                                Validate  Get  spool file
+  assert:
+    that:
+    - (script_result.stdout is not search("(ORA|SP2)-[0-9]+:|(^ERROR)"))
+    - (script_result.stderr is not search("(ORA|SP2)-[0-9]+:|(^ERROR)"))
+    fail_msg:                          "Verify spool file Fail !!!  Please check Logs"
+    success_msg:                       "Verify spool file   Success!!!"
+
+- name:                                Result of query
+  shell:                               "cat {{spool_dir}}/{{ spool_file }}"
+  register:                            query_result
+
+
+
+- name:                                sync spool file
+  synchronize:
+    src:                               "{{ spool_dir }}/"
+    dest:                              "/home/svc_aiautomate/spools/"
+    rsync_opts:
+        - "--verbose"
+        - "--progress"
+        - "--stats"
+        - "--exclude=*.sql"
+        - "--exclude=README.md"
+        - "--exclude=.git"
+        - "--exclude=mos_scripts"
+        - "--exclude=*.sh"
+    mode:                              pull
+  delegate_to:         "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+  register:                            sync_file
+
+
+- name:                                Apply role to tasks
+  import_role:
+    name:                              upload
+    tasks_from:                        upload_spool.yml
+  when:                                'inventory_hostname != "spjenkabitcslp1.bred-it-prod.ad.production.local"'
+  delegate_to:         "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+- name:                                Send Email
+  shell:                               |
+         EMAIL="mysupport@bred-it.com"
+         ATTACHMENT1="/var/lib/jenkins/workspace/{{ job }}/{{ spool_file }}"
+         SUBJECT="[Ticket#{{ticket}}] [{{bank}}] [{{branch}}] Get longrunning User on FCC Database"
+         BODY='
+         <span style="font-size:12px;"><span style="font-family:arial,helvetica,sans-serif;">
+         <strong>----&nbsp;Host Name&nbsp;----</strong><br />
+         {{server}}<br />
+         <p><strong>Get longrunning user STATUS&nbsp;: {%if spool_file != "" %}&nbsp;<span style="color:#2ecc71">SUCCESS&nbsp;</span>{% else %}&nbsp;<span style="color:#c0392b">FAIL&nbsp;</span>{% endif %}</strong></p>
+         <strong>BANK</strong>:        &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;{{ bank }}<br />
+         <strong>ENVIRONMENT</strong>: &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;{{ branch }}<br />\n
+         <strong>QUERY TIME</strong>:  &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;{{ query_date.stdout }}<br />
+         <strong>----&nbsp;Result&nbsp;----</strong><br />
+         {{script_result_html.stdout}}<br />
+         <strong>----&nbsp;Please check spool on Attachment. &nbsp;----</strong><br />\n
+         </span></span>
+         '
+         echo -e "$BODY" | mutt -e "my_hdr From: Get longrunning User on FCC Database by Jenkins <applications.integration@bred-it.com>"  -e "set content_type=text/html"  -s "$SUBJECT"  -a $ATTACHMENT1 -- $EMAIL
+  delegate_to:         "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+  ignore_errors:                       true
+
+
+- name:                                Clear spool after sync
+  shell:                               find  "{{ spool_dir }}" -type f -name "longrunning_*.[Ss][pP][lL]" -mmin +240 -exec rm -f {} \;
+  when:                                '"fcc_db" in jenkins_application'

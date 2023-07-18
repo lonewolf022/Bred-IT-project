@@ -1,0 +1,59 @@
+- hosts:            mbebkksftpp01.bred-it-prod.ad.production.local
+  gather_facts:     yes
+  tasks:
+    - name:         Remove old trace file first
+      shell:        "find /tmp/* -type f -name daily_check_*.log -delete"
+      become:       true
+      ignore_errors: true
+
+    - name:         Copy script
+      copy:
+       src:         "files/{{ item }}"
+       dest:        "/home/svc_aiautomate/{{ item }}"
+       mode:        '0755'
+       owner:       svc_aiautomate
+      with_items:
+         - check_ABNote_html.sh
+       # - check_file_html.sh
+
+    # - name:         Check asiapay files
+    #   shell:        "/home/svc_aiautomate/check_file_html.sh {{ item.path }} {{ item.folder }} {{ item.name }} {{item.dof}}"
+    #   register:     asiapay
+    #   become:       true
+    #   when:         ansible_date_time.weekday != "Monday"
+    #   with_items:
+    #       - { path: "{{asiapay_dir}}", folder: bank01/`date +"%Y%m%d" -d "-1 day"`, name: "BVL_AsiaPay" ,dof: 1}
+    #       - { path: "{{asiapay_dir}}", folder: bank02/`date +"%Y%m%d" -d "-1 day"`, name: "BBF_AsiaPay" ,dof: 1}
+    #       - { path: "{{asiapay_dir}}", folder: bank03/`date +"%Y%m%d"`, name: "BBC_AsiaPay" ,dof: 0}
+    #       - { path: "{{asiapay_dir}}", folder: bank26/`date +"%Y%m%d"`, name: "BFL_AsiaPay" ,dof: 0}
+    #
+    #
+    # - name:         Check asiapay files
+    #   shell:        "/home/svc_aiautomate/check_file_html.sh {{ item.path }} {{ item.folder }} {{ item.name }} {{ item.dof}}"
+    #   register:     asiapay
+    #   become:       true
+    #   when:         ansible_date_time.weekday == "Monday"
+    #   with_items:
+    #       - { path: "{{asiapay_dir}}", folder: bank01/`date +"%Y%m%d" -d "-3 day"`, name: "BVL_AsiaPay", dof: 3 }
+    #       - { path: "{{asiapay_dir}}", folder: bank02/`date +"%Y%m%d" -d "-3 day"`, name: "BBF_AsiaPay", dof: 3 }
+    #       - { path: "{{asiapay_dir}}", folder: bank03/`date +"%Y%m%d"`, name: "BBC_AsiaPay", dof: 0 }
+    #       - { path: "{{asiapay_dir}}", folder: bank26/`date +"%Y%m%d"`, name: "BFL_AsiaPay", dof: 0 }
+    #
+    #
+    # - debug:        msg="{{item.output}}"
+    #   with_items:      "{{ asiapay.results | json_query('[].{output: stdout_lines}')}}"
+
+
+    - name:         Check SFTP ABNotes
+      shell:        "/home/svc_aiautomate/check_ABNote_html.sh"
+      register:     sftp_abnote_status
+      become:       true
+      failed_when:  sftp_abnote_status.rc != 1 and sftp_abnote_status.rc != 0
+      check_mode:   no
+
+    - debug:        var=sftp_abnote_status.stdout_lines
+
+    - name:         Transfer log To Jenkins
+      become_user:  svc_aiautomate
+      shell:        rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/tmp/daily_check_*.log  /home/svc_aiautomate/
+      delegate_to:  "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"

@@ -1,0 +1,97 @@
+---
+# Deployment details
+- name: Print the values of variable that script will perform.
+  debug:
+    msg:
+      - "Print the values of variable that come from script and will perform on target server"
+      - "Servername: {{ SERVER }}"
+      - "BANK: {{ BANK }}"
+      - "BRANCH: {{ BRANCH }}"
+      - "deploy script name: {{ DEPLOY_SCRIPT_NAME }} on path : {{ DEPLOY_SCRIPT_PATH }}"
+      - "deploy all script in {{ FileName }} on path : {{ SQL_FILE_PATH }}"
+      - "Backup path: {{ BACKUP_PATH }}"
+
+# Verify Directory is exist or not
+- name: Check deploy_script_path
+  command: ls -ld "{{ deploy_script_path }}"
+  register: deploy_script_path_stat
+  ignore_errors: true
+
+# Verify Directory is exist or not
+- name: Check sql_file_path
+  command: ls -ld "{{ sql_file_path }}"
+  register: sql_file_path_stat
+  ignore_errors: true
+
+# Verify Directory is exist or not
+- name: Check backup_path
+  command: ls -ld "{{ backup_path }}"
+  register: backup_path_stat
+  ignore_errors: true
+
+### for debug register ###
+- name: debug register temp
+  debug:
+    msg: "{{ deploy_script_path_stat }} {{ sql_file_path }} {{ backup_path }}"
+### ###
+
+# Print when target Folder doesn't exists
+- name: Print Deploy script Directory exist result
+  debug:
+    msg:
+      - "Directory output status: {{ deploy_script_path_stat }} is not exists"
+  #when: not deploy_script_path_stat.exists
+  when: deploy_script_path_stat.failed
+
+# Print when target Folder doesn't exists
+- name: Print SQL Directory exist result
+  debug:
+    msg:
+      - "Directory output status: {{ sql_file_path_stat }} is not exists"
+  #when: not sql_file_path_stat.exists
+  when: sql_file_path_stat.failed
+
+# Print when target Folder doesn't exists
+- name: Print Backup Directory exist result
+  debug:
+    msg:
+      - "Directory output status: {{ backup_path_stat }} is not exists"
+  #when: not backup_path_stat.exists
+  when: backup_path_stat.failed
+
+# Download single file from GitLab
+- name: Download file from GitLab
+  shell: |
+      curl -v -k {{ GITLAB_URL }}/api/v4/projects/{{ PROJECT_ID }}/repository/files{{ GITLAB_FILE_PATH }}{{ FileName }}/raw?ref=master -H "Authorization: Bearer {{ gitlab_api_token }}" > {{ SQL_FILE_PATH }}/{{ FileName }}
+  register: zip_file_download
+
+# Unzip downloaded file
+- name: Unzip file
+  unarchive:
+    src: "{{ SQL_FILE_PATH }}/{{ FileName }}"
+    dest: "{{ SQL_FILE_PATH }}"
+    remote_src: true
+  when: zip_file_download is changed
+  register: zip_file_unarchive
+
+# Unzip again because the file that we Download is in zip.zip type
+- name: Unzip file
+  unarchive:
+    src: "{{ SQL_FILE_PATH }}/SQLFILE"
+    dest: "{{ SQL_FILE_PATH }}"
+    mode: 0744
+    remote_src: true
+  when: zip_file_unarchive is changed
+  notify: clenup file downloaded
+
+### Deployment ###
+# Run deploy script file in target folder
+# - name: Run deployment script
+#   shell: |
+#       sh {{ DEPLOY_SCRIPT_PATH }}/{{ DEPLOY_SCRIPT_NAME }}
+
+
+- name: Debug deployment argument
+  debug:
+#    msg: "bash -x {{ DEPLOY_SCRIPT_NAME }} BANK=$1 {{ BANK }} MBKUSER=$2 {{  }} MBKPASS=$3 {{  }} SCHEMA_NAME=$4 {{  }} RUN_PATH=$5 {{ DEPLOY_SCRIPT_PATH }} RUN_DATE=$6 {{  }}"
+    msg: "bash -x {{ DEPLOY_SCRIPT_NAME }} BANK=$1 {{ BANK }} MBKUSER=$2 ... MBKPASS=$3 ... SCHEMA_NAME=$4 ... RUN_PATH=$5 {{ DEPLOY_SCRIPT_PATH }} RUN_DATE=$6 ..."

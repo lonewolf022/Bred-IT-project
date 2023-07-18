@@ -1,0 +1,191 @@
+- hosts:                spjenkabitcslp1.bred-it-prod.ad.production.local
+  vars:
+    tmp_dir:            '/tmp'
+    date:               "{{ lookup('pipe', 'date +%Y%m%d') }}"
+  gather_facts:         no
+  tasks:
+    - name:             Remove old trace file from other server
+      shell:            find /home/svc_aiautomate/ -type f -name 'daily_check_*.log' -mmin +240 -delete
+      become:           true
+
+    - name:             Remove old trace file first
+      shell:            "find /home/svc_aiautomate/ -type f -name 'summary_daily_check-*.txt' -delete"
+      become:           true
+
+    - name:             Remove old trace file first from dwh
+      shell:            find /home/svc_aiautomate/ -type f -name '*_dwh_result_*.txt' -mtime +1 -delete
+      become:           true
+
+    - name:             Remove old summary trace file first from dwh
+      shell:            find /home/svc_aiautomate/ -type f -name 'summary_dwh_result_*.txt' -delete
+      become:           true
+
+    - name:         Copy script
+      copy:
+       src:         "files/{{ item }}"
+       dest:        "/home/svc_aiautomate/{{ item }}"
+       mode:        '0755'
+       owner:       svc_aiautomate
+      with_items:
+         - git_status.sh
+         - get_dwh_report.sh
+         - get_edm_report.sh
+         - edmGetFiles.sh
+         - compare_statement.sh
+
+    - name:             Summarize logs
+      shell:            cat /home/svc_aiautomate/daily_check_{{ item }}-*.log >> /home/svc_aiautomate/summary_daily_check-{{ date }}.txt
+      with_items:
+         - mbkcslsharedp01
+#         - spwebabcicslp1
+         - mbkcslsphdbp01
+         - spsphdbvlcslp1
+         - mbcbkkctmsrvp01
+         - VUVLI-CTLM-PRD1
+         - MBEBKKSFTPP01
+         - spfccpdbvlcslp3
+         - spfccdbbfcslp1
+      register:         summary_log
+
+
+    - name:             Check summary_daily_check-{{ date }}.txt file
+      stat:
+        path:           '/home/svc_aiautomate/summary_daily_check-{{ date }}.txt'
+      register:         summaryfile
+
+    - name:             Add line format part1
+      lineinfile:
+         path:          '/home/svc_aiautomate/summary_daily_check-{{ date }}.txt'
+         # insertafter:   '^(.*)Joomla_WWW(.*)$'
+         insertbefore:   '^(.*)______ Saphir_MBK_DB _____(.*)$'
+         line:          '<p><span style="font-size:14px"><b>---------  Checkpoint 2 Saphir DB and ESB DB daily backup ( Don’t call standby and can check on working hours.) ----</b></span></br>'
+         state:         present
+      when:
+        - summaryfile.stat.exists == true
+
+    - name:             Add line format part2
+      lineinfile:
+         path:          '/home/svc_aiautomate/summary_daily_check-{{ date }}.txt'
+         insertbefore:  '^(.*)Control-M Agent(.*)$'
+         firstmatch:    yes
+         line:          '<p><span style="font-size:14px"><b>---------  Checkpoint 3 Control-M Agent and Job status ( See details in alert mail and open a ticket. ) ----</b></span></br>'
+         state:         present
+      when:
+        - summaryfile.stat.exists == true
+
+    - name:             Add line format part3
+      lineinfile:
+         path:          '/home/svc_aiautomate/summary_daily_check-{{ date }}.txt'
+         insertbefore:   '^(.*)transfers to ABNotes(.*)$'
+         firstmatch:    yes
+         line:          '<p><span style="font-size:14px"><b>---------  Checkpoint 4 ABNotes status ( Don’t call standby and can check on working hours.) ----</b></span></br>'
+         state:         present
+      when:
+        - summaryfile.stat.exists == true
+
+    - name:             Add line format part4
+      lineinfile:
+         path:          '/home/svc_aiautomate/summary_daily_check-{{ date }}.txt'
+         insertafter:   '^(.*)transfers to ABNotes(.*)$'
+         firstmatch:    yes
+         line:          '<p><span style="font-size:14px"><b>---------  Checkpoint 5 BVL ADM status ( Immediate Call standby  ) ----</b></span></br>'
+         state:         present
+      when:
+        - summaryfile.stat.exists == true
+
+    - name:             Add line format part4.1
+      lineinfile:
+         path:          '/home/svc_aiautomate/summary_daily_check-{{ date }}.txt'
+         insertafter:   '^(.*)BVL ADM Status(.*)$'
+         firstmatch:    yes
+         line:          '<p><span style="font-size:14px"><b>---------  Checkpoint 5.1 BBF ADM status ( Immediate Call standby  ) ----</b></span></br>'
+         state:         present
+      when:
+        - summaryfile.stat.exists == true
+
+    - name:             Add line format part5
+      lineinfile:
+         path:          '/home/svc_aiautomate/summary_daily_check-{{ date }}.txt'
+         insertafter:   '^(.*)NOK on results(.*)$'
+         firstmatch:    yes
+         line:          '<p><span style="font-size:14px"><b>---------  Checkpoint 6 EDM status ( Call standby on daytime hours )----</b></span></br><p>Please follow step on wiki this url "https://wiki.bred-it.local/bin/view/Automate/AI-Procedure%20for%20Daily%20Checks%20via%20jenkins/"</br><p>URL for access EDM "http://spedmcambkcslp1.bred-it-prod.ad.production.local/otcs/cs.exe"</br>'
+         state:         present
+      when:
+        - summaryfile.stat.exists == true
+
+    # - name: empty dwh summary file
+    #   shell: echo /dev/null > /home/svc_aiautomate/summary_dwh_result_{{ date }}.txt
+
+    - name:            Get Account list from DWH
+      shell:           cat /home/svc_aiautomate/{{ item }}_dwh_result_{{ date }}.txt >> /home/svc_aiautomate/summary_dwh_result_{{ date }}.txt
+      with_items:
+         - BCIMR
+         - BBC
+         - BFL
+         - BBF
+         - BVL
+         - BBS
+      register:         summary_edm_log
+
+    - name:  Convert data to table from DWH
+      shell:   "/home/svc_aiautomate/get_dwh_report.sh"
+
+    - name:    Run Report from EDM
+      shell:    "/home/svc_aiautomate/edmGetFiles.sh"
+      register:    edm_status
+
+    - name: Convert data to table from EDM
+      shell:   "/home/svc_aiautomate/get_edm_report.sh"
+
+    - name:    Compare number of document btw EDM and DWH
+      shell:   "/home/svc_aiautomate/compare_statement.sh"
+
+    - name:            Add Table to summary log
+      shell:           cat /home/svc_aiautomate/temp_dwh.txt >> /home/svc_aiautomate/summary_daily_check-{{ date }}.txt
+      register:        table_edm_log
+
+    - name:             Check GIT Status
+      shell:            "/home/svc_aiautomate/git_status.sh"
+      register:         git_state
+
+    - debug:            msg="{{ git_state.stdout_lines}}"
+
+    - name:             Add Git result to track file
+      lineinfile:
+         path:          '/home/svc_aiautomate/summary_daily_check-{{ date }}.txt'
+         insertafter:   '^(.*)NOK on results(.*)$'
+         firstmatch:    yes
+         line:          '<p><span style="font-size:14px"><b>---------  Checkpoint 7 GIT status ( Don’t call standby and can check on working hours.) ----</b></span></br><p>{{ git_state.stdout }}</br>'
+         state:         present
+      when:
+        - summaryfile.stat.exists == true
+
+
+    - name:             Set content mail
+      shell:            "cat /home/svc_aiautomate/summary_daily_check-{{ date }}.txt"
+      register:         summary
+      when:
+        - summaryfile.stat.exists == true
+
+    - debug:            msg="{{ summary.stdout_lines }}"
+
+    - name:             Send mail to GOC
+      shell:            |
+               EMAIL="goc@bred-it.com;applications.integration@bred-it.com"
+               SUBJECT="[AI Daily Check] AI Daily Check Report on {{ date }}"
+               BODY='
+               <span style="font-size:12px;"><span style="font-family:arial,helvetica,sans-serif;">
+               <p>Hi Team,</br>
+               <p><span style="font-size:16px"><b> AI Daily Check Report on <span style="color:#3633FF"> {{date}} </b></span> </span><br />
+
+               <p><span style="font-size:14px"><b>--- Checkpoint 1 Summary Daily Check Website and DB backup (Don’t call standby and can check on working hours.) --- </b></span></br>
+               {{ summary.stdout }}
+               <p>If have NOK status on results, Please contact AI check on details.</br>
+               <p>From</br>
+               <p>AI Automate</br>
+               </span></span>
+               '
+               echo "$BODY" | mutt -e "my_hdr From: Automate AI Daily check by Jenkins <applications.integration@bred-it.com>" -e "set content_type=text/html" -s "$SUBJECT" -- $EMAIL
+#      delegate_to:     "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+      ignore_errors:    true
+#              If NOK on results,Please contact AI check on details."

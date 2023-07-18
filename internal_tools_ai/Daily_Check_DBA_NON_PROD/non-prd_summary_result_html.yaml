@@ -1,0 +1,74 @@
+---
+- hosts: spjenkabitcslp1.bred-it-prod.ad.production.local
+  vars:
+    tmp_dir: '/tmp'
+    date: "{{ lookup('pipe', 'date +%Y%m%d') }}"
+  gather_facts: no
+
+  tasks:
+    
+    - name: Remove old trace file first
+      shell: "find /home/svc_aiautomate/ -type f -name summary_dba_non-prd_daily_check-*.txt -delete"
+      become: true
+    
+    - name: Remove non Production old logs file
+      shell: "find /home/svc_aiautomate/rman_non-prd -type f -name daily_check_rman_*.log -ctime +1 -delete"
+      become: true
+
+    # RMAN Ticket#2023051010000179
+    - name: Add line for initial file
+      shell: |
+          #echo "<p> </br>" >> /home/svc_aiautomate/summary_dba_non-prd_daily_check-{{ date }}.txt
+          echo "<p><span style="font-size:14px"><b>--------- DBA NON-PRD DAILY CHECK ----</b></span></br>" >> /home/svc_aiautomate/summary_dba_non-prd_daily_check-{{ date }}.txt
+
+    # RMAN Ticket#2023051010000179
+    - name: Summarize logs
+      shell: cat $(find  /home/svc_aiautomate/rman_non-prd -type f -name 'daily_check_rman_*{{ date }}.log' | sort  -V) >> /home/svc_aiautomate/summary_dba_non-prd_daily_check-{{ date }}.txt
+      register: summary_rman_log
+
+    - name: Check summary_dba_non-prd_daily_check-{{ date }}.txt file
+      stat:
+        path: '/home/svc_aiautomate/summary_dba_non-prd_daily_check-{{ date }}.txt'
+      register: summaryfile
+
+    # RMAN Ticket#2023051010000179
+    - name: Add line format for RMAN backup result
+      lineinfile:
+         path: '/home/svc_aiautomate/summary_dba_non-prd_daily_check-{{ date }}.txt'
+         insertafter: '^(.*)DBA NON-PRD DAILY CHECK(.*)$'
+         firstmatch: yes
+         line: '<p><span style="font-size:14px"><b>---------  Checkpoint RMAN Backup result status ( Don’t call standby and can check on working hours. ) ----</b></span></br>'
+         state: present
+      when:
+        - summaryfile.stat.exists == true
+  
+    # RMAN Ticket#2023051010000179
+    - name: Set RMAN content mail
+      shell: "cat /home/svc_aiautomate/summary_dba_non-prd_daily_check-{{ date }}.txt"
+      register: summary_rman
+      when:
+        - summaryfile.stat.exists == true
+
+    - debug: msg="{{ summary_rman.stdout_lines }}"
+
+    - name: Send mail to DBA
+      shell: |
+               #EMAIL="pornpoj.mavongwon@bred-it.com"
+               EMAIL="support.dba@bred-it.com;goc@bred-it.com"
+               CC_EMAIL="mwd.platforms@bred-it.com"
+               SUBJECT="[NON-PRD][DBA Daily Check] AI DBA Daily Check Report on {{ date }}"
+               BODY='
+               <span style="font-size:12px;"><span style="font-family:arial,helvetica,sans-serif;">
+               <p>Hi Team,</br>
+               <p><span style="font-size:16px"><b> AI Daily Check Report on <span style="color:#3633FF"> {{ date }} </b></span> </span><br />
+
+               <!-- <p><span style="font-size:14px"><b>--- Checkpoint 1 Summary Daily Check Website and DB backup (Don’t call standby and can check on working hours.) --- </b></span></br> -->
+               {{ summary_rman.stdout }}
+               <p>If have NOK status on results, Please contact DBA check on details.</br>
+               <p>From</br>
+               <p>AI Automate</br>
+               </span></span>
+               '
+               echo "$BODY" | mutt -e "my_hdr From: Automate AI Daily check by Jenkins <mwd.platforms@bred-it.com>" -e "set content_type=text/html" -s "$SUBJECT" -- $EMAIL -c $CC_EMAIL
+#      delegate_to:     "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+      ignore_errors: true

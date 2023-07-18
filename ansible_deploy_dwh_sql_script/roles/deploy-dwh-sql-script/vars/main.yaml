@@ -1,0 +1,43 @@
+---
+# Jenkins Project directory location is '/var/lib/jenkins/workspace/${JENKINS_PROJECT_NAME}'
+# '/var/lib/jenkins/workspace/Deploy-DWH-SQL-Script_AI'
+# Red Hat Satellite URL
+satellite_url: "https://spsatombkcslp1.bred-it-prod.ad.production.local"
+
+# Server name that revice value from Jenkins
+#SERVER: "{{ dwh_servername }}"
+
+# Upload file name
+#FILE_NAME: "{{ FileName }}"
+
+# BANK
+BANK: "{{ bank }}"
+
+# BRANCH
+BRANCH: "{{ branch }}"
+
+# Script name and path that receive value from Jenkins
+DEPLOY_SCRIPT_NAME: "{{ deploy_script_name }}"
+DEPLOY_SCRIPT_PATH: "{{ deploy_script_path }}"
+
+# SQL name and path that receive value from Jenkins
+SQL_FILE_NAME: "{{ sqlfile }}"
+SQL_FILE_PATH: "{{ sql_file_path }}"
+
+# SQL backup result path that receive from Jenkins 
+BACKUP_PATH: "{{ backup_path }}"
+
+# GitLab URL
+GITLAB_URL: "https://git.bred-it-prod.ad.production.local"
+
+# GitLab project ID
+PROJECT_ID: "669"
+
+# GitLab API TOKEN that value came from AWX
+gitlab_api_token: "xDtRXwQxxRjDSJ_Hf59M"
+
+# Folder location on GitLab that contain the file
+GITLAB_FILE_PATH: "/upload%2F"
+
+# Download path location
+DOWNLOAD_PATH: "/tmp"

@@ -1,0 +1,24 @@
+---
+#
+- name:                      Read Oracle Profile
+  become:                    True
+  shell:                     cat /home/oracle/.bash_profile | sed '/^[[:space:]]*$/d' | grep -v "#" | sed 's/export //g' | egrep "^ORACLE_BASE=|^ORACLE_SID=|^ORACLE_HOME=|^PATH="
+  register:                  oracle_profile
+#
+- name: "Set Oracle Profile"
+  set_fact:
+      ORACLE_BASE:   "{{ oracle_profile.stdout | regex_findall('ORACLE_BASE=(.+)') | first }}"
+#      ORACLE_SID:   "{{ oracle_profile.stdout | regex_findall('ORACLE_SID=(.+)') | first }}"
+      ORACLE_HOME:   "{{ oracle_profile.stdout | regex_findall('ORACLE_HOME=(.+)') | first }}"
+      PATH:   "{{ oracle_profile.stdout | regex_findall('PATH=(.+)') | first }}"
+#
+- name: Get ORACLE_SID
+  shell:  curl -s -k -u svc_aiautomate:{{svc_aiautomate_pass}} -X GET '{{satellite_url}}/api/v2/hosts/{{ hostname_inv  | lower  }}/parameters/?search=name~oracle_sid'  |  jq '.results[]  | .value' | sed 's/\"//g'
+  register: oracle_sid_curl
+  delegate_to:         localhost
+
+- name: "Set Oracle_SID"
+  set_fact:
+    oracle_sid_list: "{{ oracle_sid_list | default([]) | union([item]) }}"
+  with_items:
+    - "{{oracle_sid_curl.stdout.split(',') }}"

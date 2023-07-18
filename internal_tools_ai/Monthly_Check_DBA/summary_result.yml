@@ -1,0 +1,97 @@
+- hosts:                spjenkabitcslp1.bred-it-prod.ad.production.local
+  vars:
+    tmp_dir:            '/tmp'
+    date:               "{{ lookup('pipe', 'date +%Y%m%d') }}"
+    monthly_date:       "{{ lookup('pipe', 'date +%d')}}"
+  gather_facts:         no
+  tasks:
+    - name:             Remove rman old trace file from other server
+      shell:            find /home/svc_aiautomate/ -type f -name "monthly_check_rman_*.log" -mmin +240 -delete
+      become:           true
+
+    - name:             Remove expdp old trace file from other server
+      shell:            find /home/svc_aiautomate/ -type f -name "monthly_check_expdp_*.log" -mmin +240 -delete
+      become:           true
+
+    - name:             Remove old trace file first
+      shell:            "find /home/svc_aiautomate/ -type f -name summary_monthly_check_rman-*.txt -delete"
+      become:           true
+
+
+    - name:             Check summary_monthly_check-{{ date }}.txt file
+      stat:
+        path:           '/home/svc_aiautomate/summary_monthly_check_rman-{{ date }}.txt'
+      register:         summaryfile
+
+
+    - name:             Add line format part1
+      lineinfile:
+         path:          '/home/svc_aiautomate/summary_monthly_check_rman-{{ date }}.txt'
+         insertbefore:  EOF
+         line:          "<p><b>---------  Summary Monthly Check EXPDP Backup ( Will show on monthly ) ----</b></br>"
+         state:         present
+      when:
+        - summaryfile.stat.exists == true
+
+    - name:             Summarize expdp logs
+      shell:            cat /home/svc_aiautomate/monthly_check_expdp_{{ item }}-*.log >> /home/svc_aiautomate/summary_monthly_check_rman-{{ date }}.txt
+      with_items:
+         - BBCDWHPR
+      register:         summary_bbc_dwh_log
+#      when:       monthly_date  == "02"
+
+    - name:             Summarize expdp logs
+      shell:            cat /home/svc_aiautomate/monthly_check_expdp_{{ item }}-*.log >> /home/svc_aiautomate/summary_monthly_check_rman-{{ date }}.txt
+      with_items:
+         - BCIPRODW
+         - BFLDWHPR
+         - BVLPRODW
+      register:         summary_dwh_log
+#      when:       monthly_date  == "03"
+
+
+    - name:             Summarize bbf expdp logs
+      shell:            cat /home/svc_aiautomate/monthly_check_expdp_{{ item }}-*.log >> /home/svc_aiautomate/summary_monthly_check_rman-{{ date }}.txt
+      with_items:
+         - BBFDWHPR
+      register:         summary_bbf_dwh_log
+#      when:       monthly_date  == "04"
+
+    - name:             Check summary_weekly_check-{{ date }}.txt file
+      stat:
+       path:           '/home/svc_aiautomate/summary_monthly_check_rman-{{ date }}.txt'
+      register:         summaryfile
+
+
+    - name:             Set content mail
+      shell:            cat /home/svc_aiautomate/summary_monthly_check_rman-{{ date }}.txt
+      register:         summary_expdp
+      when:
+        - summaryfile.stat.exists == true
+
+    - debug:            msg="{{ summary_expdp.stdout_lines }}"
+
+    - name:             Send mail to GOC
+      shell:            |
+               #EMAIL="sureenart.kietsaroch@bred-it.com"
+               EMAIL="support.dba@bred-it.com;goc@bred-it.com"
+               CC_EMAIL="applications.integration@bred-it.com"
+               SUBJECT="[DBA Monthly Check] DBA Monthly Check Report on {{ date }}"
+               BODY='
+               <span style="font-size:12px;"><span style="font-family:arial,helvetica,sans-serif;">
+               <p>Hi Team,</br>
+               <p><span style="font-size:16px"><b> DBA Monthly Check Report on <span style="color:#3633FF"> {{date}} </b></span> </span><br />
+
+               <p><span style="font-size:14px"><b>----- Summary Monthly Check EXPDP Backup ----- </b></span></br>
+
+               {{ summary_expdp.stdout }}"
+
+               <p>If have any failed on Monthly EXPDP backup ,Please contact DBA check on details.</br>
+               <p>From</br>
+               <p>DBA</br>
+               </span></span>
+               '
+               echo "$BODY" | mutt -e "my_hdr From: Automate DBA Monthly check by Jenkins <support.dba@bred-it.com>" -e "set content_type=text/html" -s "$SUBJECT" -- $EMAIL -c $CC_EMAIL
+#      delegate_to:     "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+      ignore_errors:    true
+#              If NOK on results,Please contact AI check on details."

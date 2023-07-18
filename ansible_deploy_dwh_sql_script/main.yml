@@ -1,0 +1,22 @@
+---
+- name: Upload file into Git
+  hosts: "{{ GITLAB_SERVER }}"
+  gather_facts: False
+  become: True
+  vars_files:
+    - vars.yml
+    - svc_aiautomate_secrets.yml
+
+  roles:
+    - upload-file-into-gitlab
+
+- name: Deploy SQL script playbook
+  hosts: "{{ SERVER }}"
+  gather_facts: False
+  become: True
+  vars_files:
+    - vars.yml
+    - svc_aiautomate_secrets.yml
+
+  roles:
+    - deploy-dwh-sql-script

@@ -1,0 +1,8 @@
+{
+    "yaml.schemas": {
+        "https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/tasks": [
+            "file:///e%3A/ansible/AI/ansible_deploy_dwh_sql_script/roles/upload-file-into-gitlab/tasks/main.yaml",
+            "file:///root/ansible_deploy_dwh_sql_script/roles/deploy-dwh-sql-script/tasks/main.yaml"
+        ]
+    }
+}

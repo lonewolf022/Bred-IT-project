@@ -1,0 +1,179 @@
+- hosts:               bbcbkkdwhp01.bbc.local
+  gather_facts:        no
+  tasks:
+   - name:            Remove old trace file first
+     shell:           "find /tmp/automate -type f -name '*_account_output_*' -mtime +30 -delete"
+     become:          true
+
+
+   - name:            Remove result file first
+     shell:           "find /home/svc_aiautomate -type f -name 'BBC_dwh_result_*.txt' -delete"
+     become:          true
+
+
+   - name:         Copy script
+     copy:
+      src:         "files/{{ item }}"
+      dest:        "/home/svc_aiautomate/{{ item }}"
+      mode:        '0755'
+      owner:       svc_aiautomate
+     with_items:
+        - check_statement_dwh.sh
+
+   - name:             Get Account list BBC DWH
+     shell:            "bash /home/svc_aiautomate/check_statement_dwh.sh BBC"
+     register:         bbc_dwh_result
+     become:           true
+
+   - debug:           msg="{{bbc_dwh_result.stdout_lines}}"
+
+   - name:         Transfer log To Jenkins
+     become_user:  svc_aiautomate
+     shell:        rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/home/svc_aiautomate/BBC_dwh_result_*.txt  /home/svc_aiautomate/
+     delegate_to:  "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+- hosts:                bflcsldwhp01.bfl.net
+  gather_facts:        no
+  tasks:
+   - name:            Remove old trace file first
+     shell:           "find /tmp/automate -type f -name '*_account_output_*' -mtime +30 -delete"
+     become:          true
+
+
+   - name:            Remove result file first
+     shell:           "find /home/svc_aiautomate -type f -name 'BFL_dwh_result_*.txt' -delete"
+     become:          true
+
+   - name:         Copy script
+     copy:
+      src:         "files/{{ item }}"
+      dest:        "/home/svc_aiautomate/{{ item }}"
+      mode:        '0755'
+      owner:       svc_aiautomate
+     with_items:
+        - check_statement_dwh.sh
+
+   - name:             Get Account list BFL DWH
+     shell:            "bash /home/svc_aiautomate/check_statement_dwh.sh BFL"
+     register:         bfl_dwh_result
+     become:           true
+
+   - debug:           msg="{{bfl_dwh_result.stdout_lines}}"
+
+   - name:         Transfer log To Jenkins
+     become_user:  svc_aiautomate
+     shell:        rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/home/svc_aiautomate/BFL_dwh_result_*.txt  /home/svc_aiautomate/
+     delegate_to:  "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+- hosts:               spdwhdbbfcslp1.bbf-prod.ad.production.local
+  gather_facts:        no
+  tasks:
+   - name:            Remove old trace file first
+     shell:           "find /tmp/automate -type f -name '*_account_output_*' -mtime +30 -delete"
+     become:          true
+
+
+   - name:            Remove result file first
+     shell:           "find /home/svc_aiautomate -type f -name 'BBF_dwh_result_*.txt' -delete"
+     become:          true
+
+   - name:         Copy script
+     copy:
+      src:         "files/{{ item }}"
+      dest:        "/home/svc_aiautomate/{{ item }}"
+      mode:        '0755'
+      owner:       svc_aiautomate
+     with_items:
+        - check_statement_dwh.sh
+
+   - name:             Get Account list BBF DWH
+     shell:            "bash /home/svc_aiautomate/check_statement_dwh.sh BBF"
+     register:         bbf_dwh_result
+     become:           true
+
+   - debug:           msg="{{bbf_dwh_result.stdout_lines}}"
+
+   - name:         Transfer log To Jenkins
+     become_user:  svc_aiautomate
+     shell:        rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/home/svc_aiautomate/BBF_dwh_result_*.txt  /home/svc_aiautomate/
+     delegate_to:  "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+- hosts:               spdwhdbcicslp2.bcimr-prod.ad.production.local
+  gather_facts:        no
+  tasks:
+   - name:            Remove old trace file first
+     shell:           "find /tmp/automate -type f -name '*_account_output_*' -mtime +30 -delete"
+     become:          true
+
+
+   - name:            Remove result file first
+     shell:           "find /home/svc_aiautomate -type f -name 'BCIMR_dwh_result_*.txt' -delete"
+     become:          true
+
+   - name:         Copy script
+     copy:
+      src:         "files/{{ item }}"
+      dest:        "/home/svc_aiautomate/{{ item }}"
+      mode:        '0755'
+      owner:       svc_aiautomate
+     with_items:
+        - check_statement_dwh.sh
+
+   - name:             Get Account list BCIMR DWH
+     shell:            "bash /home/svc_aiautomate/check_statement_dwh.sh BCIMR"
+     register:         bcimr_dwh_result
+     become:           true
+
+   - debug:           msg="{{bcimr_dwh_result.stdout_lines}}"
+
+   - name:         Transfer log To Jenkins
+     become_user:  svc_aiautomate
+     shell:        rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/home/svc_aiautomate/BCIMR_dwh_result_*.txt  /home/svc_aiautomate/
+     delegate_to:  "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+- hosts:               spdwhdbvlcslp2.bvl-prod.ad.production.local
+  gather_facts:        no
+  tasks:
+   - name:            Remove old trace file first
+     shell:           find /tmp/automate -type f -name '*_account_output_*' -mtime +30 -delete
+     become:          true
+
+
+   - name:            Remove result file first
+     shell:           find /home/svc_aiautomate -type f -name '*_dwh_result_*.txt' -delete
+     become:          true
+
+   - name:         Copy script
+     copy:
+      src:         "files/{{ item }}"
+      dest:        "/home/svc_aiautomate/check_statement_dwh.sh"
+      mode:        '0755'
+      owner:       svc_aiautomate
+     with_items:
+        - check_statement_dwh_bbs.sh
+
+   - name:             Get Account list BBS DWH
+     shell:            "bash /home/svc_aiautomate/check_statement_dwh.sh BBS"
+     register:         bbs_dwh_result
+     become:           true
+
+   - debug:           msg="{{bbs_dwh_result.stdout_lines}}"
+
+   - name:             Get Account list BVL DWH
+     shell:            "bash /home/svc_aiautomate/check_statement_dwh.sh BVL"
+     register:         bvl_dwh_result
+     become:           true
+
+   - debug:           msg="{{bvl_dwh_result.stdout_lines}}"
+
+   - name:         Transfer BBS log To Jenkins
+     become_user:  svc_aiautomate
+     shell:        rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/home/svc_aiautomate/BBS_dwh_result_*.txt  /home/svc_aiautomate/
+     delegate_to:  "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+   - name:         Transfer BVL log To Jenkins
+     become_user:  svc_aiautomate
+     shell:        rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/home/svc_aiautomate/BVL_dwh_result_*.txt  /home/svc_aiautomate/
+     delegate_to:  "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+
+#

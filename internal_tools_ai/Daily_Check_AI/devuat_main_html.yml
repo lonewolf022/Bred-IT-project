@@ -1,0 +1,3 @@
+---
+- import_playbook: devuat_check_saphir_backup_html.yml
+- import_playbook: devuat_summary_result_html.yml

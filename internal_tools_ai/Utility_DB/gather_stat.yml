@@ -1,0 +1,31 @@
+---
+- hosts:                     "{{ server }},spjenkabitcslp1.bred-it-prod.ad.production.local"
+  # strategy:                  mitogen_linear
+  gather_facts:              false
+  become: True
+  vars_files:
+    - vars.yml
+    - svc_aiautomate_secrets.yml
+  # pre_tasks:
+  #
+   # - name:                   "Set variable satellite URL"
+   #   include_tasks:          "profile/satellite_url.yml"
+   # - name:                   Get App Current Version
+   #   uri:
+   #     url:                  "{{satellite_url}}/api/v2/hosts/{{ hostname_inv  | lower  }}/parameters/"
+   #     user:                 svc_aiautomate
+   #     password:             "{{svc_aiautomate_pass}}"
+   #     method:               GET
+   #     force_basic_auth:     yes
+   #     body_format:          json
+   #     status_code:          200
+   #     validate_certs:       false
+   #   delegate_to:            localhost
+   #   register:               parameters_app_version
+   # - set_fact:
+   #    jenkins_application:  "{{parameters_app_version.json | json_query ('results[? name==`jenkins_application`].value') | join(', ')}}"
+   #    oracle_sid:        "{{ parameters_app_version.json | json_query ('results[? name==`oracle_sid`].value') | join(', ') }}"
+
+
+  roles:
+   - { role: gather_stat, when: '"_db" in jenkins_application'}

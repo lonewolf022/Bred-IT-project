@@ -1,0 +1,22 @@
+---
+- hosts:         spfccpdbvlcslp3.bvl-prod.ad.production.local
+  become:        true
+  gather_facts:         no
+  tasks:
+    - name:         Remove old trace file first
+      shell:        "find /tmp/* -type f -name daily_check_*.log -delete"
+      become:       true
+
+    - name:             Check BVL ADM status
+      shell:            "bash /root/check_BVL_ADM.sh"
+      register:         bvl_adm_result
+      become:           true
+
+    - debug:           msg="{{bvl_adm_result.stdout_lines}}"
+
+  #  - debug:            msg="{{  item.output}}"
+  #    with_items:       "{{ backup_saphir_mbk.results | json_query('[].{output: stdout_lines}')}}"
+    - name:         Transfer log To Jenkins
+      become_user:  svc_aiautomate
+      shell:        rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/tmp/daily_check_*.log  /home/svc_aiautomate/
+      delegate_to:  "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"

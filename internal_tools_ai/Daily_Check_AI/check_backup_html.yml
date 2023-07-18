@@ -1,0 +1,53 @@
+- hosts:               mbkcslsharedp01.bred-it.local
+  vars:
+    html_dir:          '/var/backup/html'
+    mysql_dir:         '/var/backup/mysql'
+  gather_facts:        no
+  tasks:
+    - name:            Remove old trace file first
+      shell:           "find /tmp/* -type f -name 'daily_check_*.log' -delete"
+      become:          true
+      
+
+    - name:         Copy script
+      copy:
+       src:         "files/{{ item }}"
+       dest:        "/home/svc_aiautomate/{{ item }}"
+       mode:        '0755'
+       owner:       svc_aiautomate
+      with_items:
+         - compare_size_html.sh
+
+
+    - name:            Check html backups
+      shell:           bash -x /home/svc_aiautomate/compare_size_html.sh {{ item.path }} '{{ item.folder }}' {{ item.name }}
+      register:        backup_html
+      become:          true
+      with_items:
+          # - { path: "{{html_dir}}", folder: bfl-bred, name: "BFL_WWW" }
+          # - { path: "{{mysql_dir}}", folder: bfl-bred, name: "BFL_Mysql" }
+          - { path: "{{html_dir}}", folder: bbf, name: "BBF_WWW" }
+          - { path: "{{mysql_dir}}", folder: bbf, name: "BBF_Mysql" }
+          #- { path: "{{html_dir}}", folder: bbc , name: "BBC_WWW"}
+          #- { path: "{{mysql_dir}}", folder: bbc/*bbc* , name: "BBC_Mysql"}
+          #- { path: "{{mysql_dir}}", folder: bbc/wordpress* , name: "BBC_Wordpress_Mysql"}
+          - { path: "{{html_dir}}", folder: bit, name: "BIT_WWW" }
+          - { path: "{{mysql_dir}}", folder: bit, name: "BIT_Mysql" }
+          - { path: "{{html_dir}}", folder: bvl, name: "BVL_WWW" }
+          - { path: "{{mysql_dir}}", folder: bvl, name: "BVL_Mysql" }
+          - { path: "{{html_dir}}", folder: bvlsb, name: "BBS_WWW" }
+          - { path: "{{mysql_dir}}", folder: bvlsb, name: "BBS_Mysql" }
+          #- { path: "{{html_dir}}", folder: bcimr_prd, name: "BCIMR_WWW" }
+          #- { path: "{{mysql_dir}}", folder: bcimr_prd, name: "BCIMR_Mysql" }
+#      loop_control:
+#             pause: 3
+
+
+    - debug:           msg="{{item.output}}"
+      with_items:      "{{ backup_html.results | json_query('[].{output: stdout_lines}')}}"
+
+
+    - name:                      Transfer log To Jenkins
+      become_user: svc_aiautomate
+      shell: rsync -apvvzhO --no-perms --progress --stats  --rsync-path="sudo rsync"   svc_aiautomate@{{ansible_host}}:/tmp/daily_check_*.log  /home/svc_aiautomate/
+      delegate_to:   "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"

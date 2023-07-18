@@ -1,0 +1,138 @@
+---
+- name:                      Print ENV USER
+  become_user:               oracle
+  shell:                     |
+          #!bin/bash
+          source /home/oracle/.bash_profile
+          export ORACLE_SID={{sid}}
+          echo "ORACLE_BASE=$ORACLE_BASE"
+          echo "ORACLE_HOME=$ORACLE_HOME"
+          echo "PATH=$PATH"
+  register:                  oracle_profile
+
+
+- name:                      Set fact
+  set_fact:
+    work_dir:                '/home/oracle/Scripts/bin'
+    # lastname_up:             "{{ lastname | upper }}"
+    PATH:             "{{ oracle_profile.stdout | regex_findall('PATH=(.+)') | first | regex_replace('\\s', '') }}"
+    ORACLE_BASE:             "{{ oracle_profile.stdout | regex_findall('ORACLE_BASE=(.+)') | first | regex_replace('\\s', '') }}"
+    ORACLE_HOME:             "{{ oracle_profile.stdout | regex_findall('ORACLE_HOME=(.+)') | first | regex_replace('\\s', '')}}"
+    ORACLE_SID:              "{{sid}}"
+    timestamp: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S')}}"
+    # user_mail:               "{{Email}}"
+
+- name:                 Check STATUS Oracle DB
+  become_user:          "oracle"
+  shell:                |
+         export ORACLE_HOME={{ORACLE_HOME}}
+         COMMAND_SQL=`{{ORACLE_HOME}}/bin/sqlplus -s / as sysdba <<-EOF
+                  SET HEADING OFF;
+                  SELECT DATABASE_STATUS  FROM V\\$INSTANCE;
+                  EXIT;
+                  EOF`
+         echo $COMMAND_SQL
+  environment:
+     ORACLE_HOME:       "{{ORACLE_HOME}}"
+     ORACLE_BASE:       "{{ORACLE_BASE}}"
+     PATH:              "{{PATH}}"
+     ORACLE_SID:        "{{ORACLE_SID}}"
+  register:             oracle_status
+
+- name:                      Validate DATABASE_STATUS
+  assert:
+    that:                    "'ACTIVE' in oracle_status.stdout_lines"
+    success_msg:             "DB ACTIVE!!!"
+    fail_msg:                "Please contact DBA to check DATABASE_STATUS : [{{oracle_status.stdout}}]"
+
+- name:                      Run script check user exising
+  shell:                     |
+                             source /home/oracle/.bash_profile > /dev/null
+                             export ORACLE_SID={{ORACLE_SID}}
+                             {{ORACLE_HOME}}/bin/sqlplus -s '/  as sysdba ' << EOF
+                             set heading off;
+                             set feedback off;
+                             set echo off;
+                             select count(*) from dba_users where username = '{{ UserName }}';
+                             exit
+                             EOF
+  environment:
+       ORACLE_BASE:          "{{ORACLE_BASE}}"
+       ORACLE_HOME:          "{{ORACLE_HOME}}"
+  become_user:               oracle
+  register:                  check_user
+
+- name: set var
+  set_fact:
+    chk_user: "{{check_user.stdout | trim}}"
+
+- fail:
+    msg: Unable to find user {{UserName}}
+  when:
+    - chk_user == "0"
+    - Task != "Status"
+
+- name:                                    Change path Permission to oracle
+  file:
+   path:                                   "/Automate/Scripts"
+   state:                                  directory
+   owner:                                  oracle
+   group:                                  oracle
+
+- name: copy file
+  become_user: oracle
+  copy:
+    src: "{{item}}"
+    dest: /Automate/Scripts/
+    mode:  '0755'
+  with_items:
+    - "{{ role_path }}/files/"
+  # when: chk_user != "0"
+
+- name: copy file 2
+  become_user: oracle
+  template:
+    src: check_debug_status.sh.j2
+    dest: /Automate/Scripts/check_debug_status.sh
+    mode: '0755'
+
+- name: run script enable debug
+  shell:  /Automate/Scripts/oracle_use_enable_debug_fcc.sh {{ORACLE_SID}} {{Owner}} {{UserName}}
+  environment:
+       ORACLE_BASE:          "{{ORACLE_BASE}}"
+       ORACLE_HOME:          "{{ORACLE_HOME}}"
+  become_user:               oracle
+  when:
+    - chk_user != "0"
+    - Task == "Enable"
+
+- name: run script disable debug
+  shell:  /Automate/Scripts/oracle_use_disable_debug_fcc.sh {{ORACLE_SID}} {{Owner}} {{UserName}}
+  environment:
+       ORACLE_BASE:          "{{ORACLE_BASE}}"
+       ORACLE_HOME:          "{{ORACLE_HOME}}"
+  become_user:               oracle
+  when:
+    - chk_user != "0"
+    - Task == "Disable"
+
+- name: run script check status
+  shell:  /Automate/Scripts/check_debug_status.sh {{ORACLE_SID}}
+  environment:
+       ORACLE_BASE:          "{{ORACLE_BASE}}"
+       ORACLE_HOME:          "{{ORACLE_HOME}}"
+  become_user:               oracle
+  register: statusout
+  # when:
+  #   - Task == "Status"
+
+# - debug:
+#     msg: "{{statusout.stdout_lines}}"
+#   when:
+#     - Task == "Status"
+
+- name: write to workspace
+  shell: echo -e {{statusout.stdout_lines|join('\\n')}} > {{WORKSPACE}}/user_debug_status_{{timestamp}}_{{ORACLE_SID}}.txt
+  delegate_to:         "{{ hostvars['spjenkabitcslp1.bred-it-prod.ad.production.local']['ansible_host']}}"
+  # when:
+  #   - Task == "Status"

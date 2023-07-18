@@ -1,0 +1,73 @@
+---
+# Convert File to zip file format
+- name: Create zip archive
+  archive:
+    path: "{{ UPLOAD_PATH }}/SQLFILE"
+    dest: "{{ UPLOAD_PATH }}/{{ FILE_NAME }}"
+    owner: jenkins
+    group: jenkins
+    format: zip
+  register: zip_file_status
+
+# Check folder is exist or not and create if it doesn't exist
+- name: Create a directory if it does not exist
+  file:
+      path: "{{ UPLOAD_PATH }}/repo"
+      state: directory
+      owner: svc_aiautomate
+      group: _GGP_BIT_APP_LINUX_TECACC
+
+# Grant specific user access to the folder
+- name: Grant user svc_aiautomate  read access to a file
+  acl:
+    path: "{{ UPLOAD_PATH }}/repo"
+    entity: svc_aiautomate
+    etype: user
+    permissions: rwx
+    state: present
+    recursive: yes
+
+# Clone repository to local server
+- name: Clone GitLab repository
+  become_user: svc_aiautomate
+  git:
+    repo: "{{ GITLAB_REPO_URL }}"
+    dest: "{{ UPLOAD_PATH }}/repo"
+    force: yes
+  register: git_clone
+
+# Copy the converted file into target folder
+- name: Copy new file to repository
+  copy:
+    src: "{{ UPLOAD_PATH }}/{{ FILE_NAME }}"
+    dest: "{{ UPLOAD_PATH }}/repo/upload"
+    owner: svc_aiautomate
+    group: _GGP_BIT_APP_LINUX_TECACC
+    remote_src: yes
+  when: git_clone is changed
+
+# Add changed file into GitLab
+- name: Add changes
+  become_user: svc_aiautomate
+  command: git add "{{ UPLOAD_PATH }}/repo/upload"
+  args:
+    chdir: "{{ UPLOAD_PATH }}/repo/upload"
+  when: git_clone is changed
+
+# Commit the git
+- name: Commit changes
+  become_user: svc_aiautomate
+  command: git commit -m "Committing changes to add file {{ FILE_NAME }}"
+  args:
+    chdir: "{{ UPLOAD_PATH }}/repo/upload"
+  when: git_clone is changed
+
+# Sync changed file into git
+- name: Push changes
+  become_user: svc_aiautomate
+  command: git push origin master
+  args:
+    chdir: "{{ UPLOAD_PATH }}/repo/upload"
+  when: git_clone is changed
+  notify: cleanup_env
+
