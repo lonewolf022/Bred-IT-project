@@ -1,0 +1,165 @@
+// Define GitLab URL
+def GITLAB_URL = 'https://git.bred-it-prod.ad.production.local'
+
+// Define UAT hostname
+def BBC_CTRLM_FCC_APP_HOST = 'bbcbkkdwhu01.bbc.local'
+
+def BBC_CTRLM_FCC_DEV_HOST = 'bbcbkkappd01.bbc.local'
+
+// Define UAT short dir name
+def BBC_FCC_DIR_APP = 'bbcbkkdwhu01'
+
+def BBC_FCC_DIR_DEV = 'bbcbkkappd01'
+
+// Define script path
+def ScriptPath_ORACLE = '/home/oracle/Scripts'
+def ScriptPath_CTRLM = '/home/ctrlm/user_scripts'
+
+pipeline {
+
+    agent any
+
+    environment {
+        TAG_DATE_FORMAT = "%Y%m%d"
+    }
+
+    stages {
+        stage('List variable') {
+            steps {
+                sh "printenv | sort"
+                echo "${env.BUILD_NUMBER}"
+                echo "${env.gitlabBranch}"
+                echo "${env.GIT_BRANCH}"
+            }
+        }
+
+        // Cleanup Workspace stage
+        stage('Cleanup WorkSpace') {
+            when {
+                environment name: 'gitlabBranch', value: 'UAT'
+            }
+            steps {
+                cleanWs()
+            }
+        }
+
+        // UAT Branches stages
+        stage('Git Pull: UAT Branch') {
+            when {
+                environment name: 'gitlabBranch', value: 'UAT'
+            }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'svc_jenkins', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                    git branch: "${env.gitlabBranch}", credentialsId: 'svc_jenkins', url: 'https://git.bred-it-prod.ad.production.local/AI/bakong_deploy_controlm_user_script_uat.git'
+                    script {
+                        // Switch to main Branch
+                        sh "git checkout main"
+                        // Get current working branch
+                        sh 'git branch'
+                        // Pull Fetch data from repository
+                        sh 'git pull https://${GIT_USERNAME}:${GIT_PASSWORD}@git.bred-it-prod.ad.production.local/AI/bakong_deploy_controlm_user_script_uat.git'
+                        // List remote branch
+                        sh "git branch -r"
+                        // Switch to UAT Branch
+                        sh "git checkout UAT"
+                    }                 
+                }
+            }
+        }
+
+        stage('Transfer File: UAT Branch') {
+            when {
+                environment name: 'gitlabBranch', value: 'UAT'
+            }
+            steps {
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                echo "${env.gitlabBranch}"                
+                }
+
+                script {
+                    try {
+                        // Set Variables
+                        def targetFile = null
+                        def targetHost = null
+                        def targetDir = null
+
+                        // Define command that will use 
+                        def getLastLogs = "git log -1 --pretty=%B"
+                        def showLastCommit = 'git show --pretty="" --name-only'
+                        def getLastMergeFirstValue = 'git log --merges -1 --pretty=format:"%P" | awk \'{ print $2 }\' | xargs -I {} git show --pretty="" --name-only {}'
+
+                        // Execute command for display the output
+                        sh "${getLastLogs}"
+                        sh "${showLastCommit}"
+                        sh "${getLastMergeFirstValue}"
+
+                        // Set Variables value for Transfer on the next step
+                        try {
+
+                            def commands = [
+                                'git show --pretty="" --name-only | grep bbcbkkdwhu01' : 'bbcbkkdwhu01.bbc.local',
+                                'git log -1 --merges --pretty=format:"%P" | awk \'{ print $2 }\' | xargs -I {} git show --pretty="" --name-only {} | grep bbcbkkdwhu01' : 'bbcbkkdwhu01.bbc.local',
+                                'git show --pretty="" --name-only | grep bbcbkkappd01' : 'bbcbkkappd01.bbc.local',
+                                'git log -1 --merges --pretty=format:"%P" | awk \'{ print $2 }\' | xargs -I {} git show --pretty="" --name-only {} | grep bbcbkkappd01' : 'bbcbkkappd01.bbc.local'
+                            ]
+
+                            def result = ''
+
+                            for (def command in commands.keySet() ) {
+                                def cmdValue = commands[command]
+                                result = sh(returnStdout: true, returnStatus: true, script: command)
+                                if (result == 0) {
+                                    echo "The command ststus is successful"
+                                    echo "The value of cmd is : ${cmdValue}"
+                                    echo "${command}"
+                                    // Full path of commit without file name
+                                    // targetDir = sh(returnStdout: true, script: command + ' | cut -d"/" -f-5').trim()
+                                    // Full path of commit with file name
+                                    targetDir = sh(returnStdout: true, script: command + ' | cut -d"/" -f-5').trim()
+                                    targetFile = sh(returnStdout: true, script: command + ' | cut -d "/" -f 6-').trim()
+                                    targetHost = "${cmdValue}"
+                                    break
+                                }
+                                //
+                            }
+
+                            sh 'echo "Check variable value"'
+                            if ( targetFile != null ) { 
+                                echo "Target File is: ${targetFile}"
+                            } else {  error('targetFile value variable is null. Forcing to fail') }
+                                
+                            if ( targetDir != null ) { 
+                                echo "Target DIR is: ${targetDir}"
+                            } else { error('targetDir value variable is null. Forcing to fail') }
+
+                        } catch (Exception e) { sh 'echo "Something wrong. Please check..."' }
+                        // END
+
+                        // Transfer file to target server
+                        if (targetHost != null ) {
+                            try {
+                                echo "Target Host is: ${targetHost}"
+                                echo "Transfering file..."
+                                // Waiting to install plugin after Jenkins version upgraded
+                                sshagent(['svc_aiautomate']) {
+                                sh """
+                                    [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
+                                    ssh-keyscan -t rsa,dsa "${targetHost}" >> ~/.ssh/known_hosts
+                                    cd ${targetDir}
+                                    pwd
+                                    ls -ltr ${targetFile}
+                                    rsync -arpvvzhOR --chown=ctrlm:ctrlm --chmod=+rwx --progress --stats --rsync-path="sudo rsync" "./${targetFile}" svc_aiautomate@"${targetHost}":"${ScriptPath_CTRLM}/"
+                                """
+                                    // scp ${targetFile} svc_aiautomate@${targetHost}:${ScriptPath_CTRLM}/
+                                    // rsync -arpvvzhO --no-perms --progress --stats --rsync-path="sudo rsync" --exclude='.gitkeep' --delete ${targetFile}/ svc_aiautomate@${targetHost}:${ScriptPath_CTRLM}/
+                                }
+                            } catch (Exception e) { sh 'echo "Something wrong in Transfer file step. Please check..." '}
+                        }
+                    } 
+                    catch (Exception e) { sh 'echo "Something failed, You need to check..."' }
+                }
+            }
+        }
+
+    }
+}
