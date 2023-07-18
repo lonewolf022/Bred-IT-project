@@ -1,0 +1,138 @@
+// Define GitLab URL
+def GITLAB_URL = 'https://git.bred-it-prod.ad.production.local'
+
+// Define PRD hostname
+def BBC_CTRLM_FCC_APP_HOST = 'bbcbkkdwhu01.bbc.local'
+
+def BBC_CTRLM_FCC_DEV_HOST = 'bbcbkkappd01.bbc.local'
+
+// Define PRD short dir name
+def BBC_FCC_DIR_APP = 'bbcbkkdwhu01'
+
+def BBC_FCC_DIR_DEV = 'bbcbkkappd01'
+
+// Define script path
+def ScriptPath_ORACLE = '/home/oracle/Scripts'
+def ScriptPath_CTRLM = '/home/ctrlm/user_scripts'
+
+pipeline {
+
+    agent any
+
+    environment {
+        TAG_DATE_FORMAT = "%Y%m%d"
+    }
+
+    stages {
+        stage('List variable') {
+            steps {
+                sh "printenv | sort"
+                echo "${env.BUILD_NUMBER}"
+                echo "${env.gitlabBranch}"
+                echo "${env.GIT_BRANCH}"
+            }
+        }
+
+        // PRD Branches stages
+        stage('Git Pull: PRD Branch') {
+            when {
+                environment name: 'GIT_BRANCH', value: 'origin/PRD'
+            }
+            steps {
+                
+                withCredentials([usernamePassword(credentialsId: 'svc_jenkins', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
+                    git branch: 'PRD', credentialsId: 'svc_jenkins', url: 'https://git.bred-it-prod.ad.production.local/AI/bakong_deploy_controlm_user_script_uat.git'
+                    script {
+                        sh 'git pull https://${GIT_USERNAME}:${GIT_PASSWORD}@git.bred-it-prod.ad.production.local/AI/bakong_deploy_controlm_user_script_uat.git'
+                    }                 
+                }
+            }
+        }
+
+        stage('Transfer File: PRD Branch') {
+            when {
+                environment name: 'GIT_BRANCH', value: 'origin/PRD'
+            }
+            steps {
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                echo "${env.GIT_BRANCH}"                
+                }
+
+                script {
+                    try {
+                        // Set Variables
+                        def targetFile = null
+                        def targetHost = null
+
+                        // Define command that will use 
+                        def getLastLogs = "git log -1 --pretty=%B"
+                        def showLastCommit = 'git show --pretty="" --name-only'
+                        def getLastMergeFirstValue = 'git log --merges -1 --pretty=format:"%P" | awk \'{ print $2 }\' | xargs -I {} git show --pretty="" --name-only {}'
+
+                        // Execute command for display the output
+                        sh "${getLastLogs}"
+                        sh "${showLastCommit}"
+                        sh "${getLastMergeFirstValue}"
+
+                        // Set Variables value for Transfer on the next step
+                        try {
+
+                            def commands = [
+                                'git show --pretty="" --name-only | grep bbcbkkdwhu01' : 'bbcbkkdwhu01.bbc.local',
+                                'git log -1 --merges --pretty=format:"%P" | awk \'{ print $2 }\' | xargs -I {} git show --pretty="" --name-only {} | grep bbcbkkdwhu01' : 'bbcbkkdwhu01.bbc.local',
+                                'git show --pretty="" --name-only | grep bbcbkkappd01' : 'bbcbkkappd01.bbc.local',
+                                'git log -1 --merges --pretty=format:"%P" | awk \'{ print $2 }\' | xargs -I {} git show --pretty="" --name-only {} | grep bbcbkkappd01' : 'bbcbkkappd01.bbc.local'
+                            ]
+
+                            def result = ''
+
+                            for (def command in commands.keySet() ) {
+                                def cmdValue = commands[command]
+                                result = sh(returnStdout: true, returnStatus: true, script: command)
+                                if (result == 0) {
+                                    echo "The command ststus is successful"
+                                    echo "The value of cmd is : ${cmdValue}"
+                                    echo "${command}"
+                                    // Full path of commit without file name
+                                    // targetDirectory_path = sh(returnStdout: true, script: command + ' | cut -d"/" -f-5').trim()
+                                    // Full path of commit with file name
+                                    targetFile = sh( returnStdout: true, script: command ).trim()
+                                    targetHost = "${cmdValue}"
+                                    break
+                                }
+                                //
+                            }
+
+                            // End the stage if Target path doesn't change
+                            if (targetFile == null) { echo "Target path doesn't change"; return}
+
+                            echo "Target Path is: ${targetFile}"
+                            echo "Target Host is: ${targetHost}"
+
+                        } catch (Exception e) { sh 'echo "Something wrong. Please check..."' }
+                        // END
+
+                        // Transfer file to target server
+                        if (targetHost != null ) {
+                            try {
+                                echo "Transfering file..."
+                                // Waiting to install plugin after Jenkins version upgraded
+                                sshagent(['svc_aiautomate']) {
+                                sh """
+                                    [ -d ~/.ssh ] || mkdir ~/.ssh && chmod 0700 ~/.ssh
+                                    ssh-keyscan -t rsa,dsa "${targetHost}" >> ~/.ssh/known_hosts
+                                    rsync -arpvvzhO --chown=ctrlm:ctrlm --chmod=+rwx --progress --stats --rsync-path="sudo rsync" ${targetFile} svc_aiautomate@${targetHost}:${ScriptPath_CTRLM}/
+                                """
+                                    // scp ${targetFile} svc_aiautomate@${targetHost}:${ScriptPath_CTRLM}/
+                                    // rsync -arpvvzhO --no-perms --progress --stats --rsync-path="sudo rsync" --exclude='.gitkeep' --delete ${targetFile}/ svc_aiautomate@${targetHost}:${ScriptPath_CTRLM}/
+                                }
+                            } catch (Exception e) { sh 'echo "Something wrong in Transfer file step. Please check..." '}
+                        }
+                    } 
+                    catch (Exception e) { sh 'echo "Something failed, You need to check..."' }
+                }
+            }
+        }
+
+    }
+}
